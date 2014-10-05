@@ -1,0 +1,7 @@
+## Interface: 50400
+## Title: |cffffffffAbu|rNameplates
+## Author: Abu
+## RequiredDeps: AbuEssentials
+
+cure.lua
+modules.lua
