@@ -159,15 +159,6 @@ end
 local function UpdateHealthColor(plate)
 	if plate.Health.doNotOverride then return; end
 	local r, g, b = GetFixedColor(plate._Health:GetStatusBarColor())
-
-	for class, _ in pairs(RAID_CLASS_COLORS) do
-		if RAID_CLASS_COLORS[class].r == r and 
-			RAID_CLASS_COLORS[class].g == g and 
-			RAID_CLASS_COLORS[class].b == b
-		then
-			return;
-		end
-	end
 	local re, f = GetFaction(r,g,b)
 	local color = FactionColors[re..f]
 	if color then
@@ -319,6 +310,7 @@ local function Nameplate_OnShow(self)
 	plate.Health:SetPoint("LEFT", plate)
 	plate.Health:SetPoint("RIGHT", plate)
 	plate.Health:SetHeight(HEIGHT*scale)
+	plate._Dragon:SetTexture(nil)
 
 	plate:UpdateName()
 	plate:SetGuid() -- Try at least
