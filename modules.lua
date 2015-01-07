@@ -1,13 +1,5 @@
 local _, ns = ...
 local cfg = ns.Config
-local BUTTON_WIDTH, BUTTON_HEIGHT = 25, 25
-local BUTTON_GAP = 3
-local IconTexture = cfg.IconTextures
-local FONT, FONTSIZE = cfg.Fonts.Normal, 12
-
-local lists = cfg.AuraList
-local BlackListMine = {}
-local WhiteListAll = {}
 
 ----------- [[	Update 			  	]]  --------------------
 local function UpdatePlayerData(e)
@@ -19,48 +11,138 @@ local function UpdatePlayerData(e)
 	if GUID then
 		ns.PlayerGUID = GUID
 	end
+	ns.PlayerName = UnitName("player")
 	local spec = GetSpecialization()
 	ns.PlayerIsTankSpec = spec and (GetSpecializationRole(spec) == "TANK") or false;
 end
 
-ns.RegisterEvent("PLAYER_LOGIN", UpdatePlayerData)
-ns.RegisterEvent("PLAYER_TALENT_UPDATE", UpdatePlayerData)
-ns.RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", UpdatePlayerData)
+ns:RegisterEvent("PLAYER_LOGIN", UpdatePlayerData)
+ns:RegisterEvent("PLAYER_TALENT_UPDATE", UpdatePlayerData)
+ns:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", UpdatePlayerData)
 
+local BlackListMine = {}
+local WhiteListAll = {}
 local function UpdateAuras(e)
 	local _, class = UnitClass("player")
 
 	wipe(BlackListMine)
-	for id, v in pairs(lists.BLACKLIST[class]) do
+	for id, v in pairs(cfg.BLACKLIST) do
+		if type(id) == "number" then
+			BlackListMine[id] = true
+		end
+	end
+	for id, v in pairs(cfg.BLACKLIST[class]) do
 		BlackListMine[id] = true
 	end
 
-	for id, v in pairs(lists.ALL) do
+	wipe(WhiteListAll)
+	for id, v in pairs(cfg.ALL) do
 		WhiteListAll[id] = true
 	end
 end
-ns.RegisterEvent("PLAYER_ENTERING_WORLD", UpdateAuras)
+ns:RegisterEvent("PLAYER_ENTERING_WORLD", UpdateAuras)
 
------------ [[	Auras on nameplate sometimes ]]  --------------------
---[===============[
-	TODO
-		Bind auras to guid instead of Auras or transfer them some way, if possible
-		Add filter 
---]===============]
+-----------------------------------------------------------
+-- Quest mobs
 
-local AuraDurationCache = {}
+local questtip = CreateFrame("GameTooltip", "AbuQuestCheckTip", nil, "GameTooltipTemplate")
+local questtipLine = setmetatable({}, { __index = function(k, i)
+	local line = _G["AbuQuestCheckTipTextLeft" .. i]
+	if line then rawset(k, i, line) end
+	return line
+end })
+
+local function GetQuestInfo(plate)
+	local GUID = ns.NameGuidMap[plate.unitName]
+	if not GUID then return; end
+
+	local is_quest
+	local num_left = 0
+
+	questtip:SetOwner(UIParent, "ANCHOR_NONE")
+	questtip:SetHyperlink("unit:"..GUID)
+
+	for i = 3, questtip:NumLines() do
+		local str = questtipLine[i]
+		if (not str) then break; end
+		local r,g,b = str:GetTextColor()
+
+		if (r > .99) and (g > .82) and (g < .83) and (b < .01) then -- quest title
+			is_quest = true
+		else
+			local done, total = str:GetText():match('(%d+)/(%d+)')  -- kill objective
+			if (done and total) then
+				local left = total - done
+				if (left > num_left) then
+					num_left = left
+				end
+			end
+		end
+	end
+	return is_quest, num_left
+end
+
+local function UpdateQuestVisuals(self)
+	local plate = self.plate
+	local isquest, num = GetQuestInfo(plate)
+	if (isquest) then
+		if (num > 0) then
+			plate.questText:SetText(num)
+			plate.questIcon:Show()
+		else
+			plate.questIcon:Hide()
+		end
+		plate.Border:SetVertexColor(1, 1, .4)
+	else
+		plate.questText:SetText(nil)
+		plate.Border:SetVertexColor(1, 1, 1)
+		plate.questIcon:Hide()
+	end
+end
+
+function ns.CreateQuestStuff(self)
+	local plate = self.plate
+
+	local icon = plate:CreateTexture(nil, nil, nil, 0)
+	icon:SetSize(28, 22)
+	icon:SetTexture('Interface/QuestFrame/AutoQuest-Parts')
+	icon:SetTexCoord(0.30273438, 0.41992188, 0.015625, 0.953125)
+	icon:SetPoint('LEFT', plate, 'TOPRIGHT', 4, -4)
+	icon:Hide()
+	plate.questIcon = icon
+
+	local text = plate:CreateFontString(nil, nil, "SystemFont_Outline_Small")
+	text:SetPoint('CENTER', icon, 1, 1)
+	text:SetShadowOffset(1, -1)
+	text:SetTextColor(1,.82,0)
+	plate.questText = text
+	if self:IsShown() then
+		UpdateQuestVisuals(self)
+	end
+	self:HookScript("OnShow", UpdateQuestVisuals)
+	self:HookScript("OnHide", function(self)
+		plate.questIcon:Hide()
+		plate.questText:SetText(nil)
+	end)
+end
+
+function ns.UpdateAllQuestPlates()
+	for self, visible in pairs(ns.VisibleNameplates) do
+		if visible then
+			UpdateQuestVisuals(self)
+		end
+	end
+end
+
+ns:RegisterEvent("QUEST_LOG_UPDATE", function()
+	ns.UpdateAllQuestPlates()
+end)
+
+---------------------------------------------------------------------
+--		Auras on nameplate sometimes
+
+local AuraDurationCache = {} -- Cache for guessing duration so we can use CLEU
 local AuraLists = {}
-local ShowEvents = {
-	["SPELL_AURA_APPLIED"] = true,
-	["SPELL_AURA_REFRESH"] = true,
-	["SPELL_AURA_APPLIED_DOSE"] = true,
-	["SPELL_AURA_REMOVED_DOSE"] = true,
-}
-local HideEvents = {
-	["SPELL_AURA_BROKEN"] = true,
-	["SPELL_AURA_BROKEN_SPELL"] = true,
-	["SPELL_AURA_REMOVED"] = true,
-}
 
 local SecondsToTimeAbbrev, 		GetSpellTexture,	GetTime,    UnitGUID,  	 UnitIsFriend
 	= _G.SecondsToTimeAbbrev, _G.GetSpellTexture, _G.GetTime, _G.UnitGUID, _G.UnitIsFriend
@@ -73,7 +155,7 @@ local function UpdateButtonPositions(self)
 		if b:IsShown() then
 			b:ClearAllPoints()
 			if prev then
-				b:SetPoint("TOPLEFT", prev, "TOPRIGHT", BUTTON_GAP, 0)
+				b:SetPoint("TOPLEFT", prev, "TOPRIGHT", cfg.AuraGap, 0)
 			else
 				b:SetPoint("BOTTOMLEFT")
 			end
@@ -121,7 +203,7 @@ end
 local function CreateAuraButton(self)
 	local b = CreateFrame('Button', nil, self)
 	b:Hide()
-	b:SetSize(BUTTON_WIDTH, BUTTON_HEIGHT)
+	b:SetSize(cfg.AuraSize, cfg.AuraSize)
 
 	b.Icon = b:CreateTexture(nil, "BACKGROUND")
 	b.Icon:SetTexCoord(.05, .95, .05, .95)
@@ -131,24 +213,24 @@ local function CreateAuraButton(self)
 	b.Border = b:CreateTexture(nil, 'BORDER')
 	b.Border:SetPoint('TOPRIGHT', b, 1, 1)
 	b.Border:SetPoint('BOTTOMLEFT', b, -1, -1)
-	b.Border:SetTexture(IconTexture['Normal'])
+	b.Border:SetTexture(cfg.AuraTexture['Normal'])
 	b.Border:SetVertexColor(unpack(cfg.Colors['Border']))
 
 	b.Shadow = b:CreateTexture(nil, 'BACKGROUND')
-	b.Shadow:SetTexture(IconTexture['Shadow'])
+	b.Shadow:SetTexture(cfg.AuraTexture['Shadow'])
 	b.Shadow:SetPoint('TOPRIGHT', b.Border, 3, 3)
 	b.Shadow:SetPoint('BOTTOMLEFT', b.Border, -3, -3)
 	b.Shadow:SetVertexColor(0, 0, 0, 1)
 
 	b.Duration = b:CreateFontString(nil, 'OVERLAY')
-	b.Duration:SetFont(FONT, FONTSIZE, "THINOUTLINE")
+	b.Duration:SetFont(cfg.Font, cfg.FontSize, "THINOUTLINE")
 	b.Duration:SetJustifyH("CENTER")
 	b.Duration:SetPoint('TOP', 1, 3)
 	b.Duration:SetTextColor(.85, .89, .25)
 
 	b.Count = b:CreateFontString(nil, 'OVERLAY')
 	b.Count:SetPoint('BOTTOMRIGHT', 1, 1)
-	b.Count:SetFont(FONT, FONTSIZE, "THINOUTLINE")
+	b.Count:SetFont(cfg.Font, cfg.FontSize, "THINOUTLINE")
 	b.Count:SetTextColor(.85, .89, .25)
 	b.Count:SetPoint("BOTTOM", b, "BOTTOM", 1, -3)
 
@@ -160,7 +242,9 @@ end
 
 local function GetAuraButton(Auras, spellID, phony)
 	if Auras.SpellIDs[spellID] then
-		if (phony and not Auras.SpellIDs[spellID].phony) then return; end -- lets not overwrite
+		if (phony and not Auras.SpellIDs[spellID].phony) then 
+			return; 
+		end -- lets not overwrite
 		return Auras.SpellIDs[spellID]
 	end
 	local numButtons = #Auras.Buttons
@@ -282,7 +366,20 @@ local function Auras_OnEvent(event, unit)
 	end
 end
 
-local function Auras_CLEU(event, _, subEvent, _, srcGUID, _, _, _, dstGUID, _, _, _, spellID, _, _, _, count)
+local ShowEvents = {
+	["SPELL_AURA_APPLIED"] = true,
+	["SPELL_AURA_REFRESH"] = true,
+	["SPELL_AURA_APPLIED_DOSE"] = true,
+	["SPELL_AURA_REMOVED_DOSE"] = true,
+}
+local HideEvents = {
+	["SPELL_AURA_BROKEN"] = true,
+	["SPELL_AURA_BROKEN_SPELL"] = true,
+	["SPELL_AURA_REMOVED"] = true,
+	["SPELL_AURA_STOLEN"] = true,
+}
+
+ns:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", function(event, _, subEvent, _, srcGUID, _, _, _, dstGUID, _, _, _, spellID, _, _, _, count)
 	if srcGUID and dstGUID and spellID then
 		if (srcGUID == ns.PlayerGUID and not BlackListMine[spellID]) or (WhiteListAll[spellID]) then
 			if ShowEvents[subEvent] then
@@ -295,7 +392,7 @@ local function Auras_CLEU(event, _, subEvent, _, srcGUID, _, _, _, dstGUID, _, _
 			end
 		end
 	end
-end
+end)
 
 function ns.CreateAuraFrame(self)
 	local plate = self.plate
@@ -310,7 +407,7 @@ function ns.CreateAuraFrame(self)
 	plate.Auras.Buttons = { };
 	plate.Auras.SpellIDs = { };
 	plate.Auras.numVisible = 0;
-	plate.Auras.MaxButtons = (plate:GetWidth()+25) / (BUTTON_WIDTH + BUTTON_GAP)
+	plate.Auras.MaxButtons = (plate:GetWidth()+25) / (cfg.AuraSize + cfg.AuraGap)
 
 	plate.Auras:SetScript("OnHide", function(self)
 		for i = 1, #self.Buttons do
@@ -325,7 +422,6 @@ function ns.CreateAuraFrame(self)
 	end)
 end
 
-ns.RegisterEvent("UNIT_AURA", Auras_OnEvent)
-ns.RegisterEvent("PLAYER_TARGET_CHANGED", Auras_OnEvent)
-ns.RegisterEvent("UPDATE_MOUSEOVER_UNIT", Auras_OnEvent)
-ns.RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", Auras_CLEU)
+ns:RegisterEvent("UNIT_AURA", Auras_OnEvent)
+ns:RegisterEvent("PLAYER_TARGET_CHANGED", Auras_OnEvent)
+ns:RegisterEvent("UPDATE_MOUSEOVER_UNIT", Auras_OnEvent)

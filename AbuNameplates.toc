@@ -1,7 +1,10 @@
 ## Interface: 60000
 ## Title: |cffffffffAbu|rNameplates
 ## Author: Abu
-## RequiredDeps: AbuEssentials
+
+libs\AbuTheLib.lua
+
+CONFIG.lua
 
 cure.lua
 modules.lua

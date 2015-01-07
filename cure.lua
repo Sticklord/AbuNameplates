@@ -1,33 +1,32 @@
 --[=====================================[
 
-	Based off rNamePlates2 by zork	
+	Based off rNamePlates2 by zork	b
 
 --]=====================================]
 
 local _, ns = ...
-setmetatable(ns, { __index = ABUADDONS })
 
 local cfg = ns.Config
-local StatusbarTex = cfg.Statusbar.Light
-local FONT, FONTSIZE = cfg.Fonts.Normal, 12
+
 local WIDTH, HEIGHT, CBHEIGHT, GAP = 105, 8,8,7
 local TOTALHEIGHT = (HEIGHT + CBHEIGHT + GAP);
-local MINALPHA = 0.6;
-local RAIDSIZE = 20;
 
-local BorderTex = "Interface\\AddOns\\AbuEssentials\\Textures\\NamePlate\\Plate.blp"
-local BorderTexGlow = "Interface\\AddOns\\AbuEssentials\\Textures\\NamePlate\\PlateGlow.blp"
-local MarkTex = "Interface\\AddOns\\AbuEssentials\\Textures\\NamePlate\\Mark2.blp"
+local BorderTex = "Interface\\AddOns\\AbuNameplates\\media\\Plate.blp"
+local BorderTexGlow = "Interface\\AddOns\\AbuNameplates\\media\\PlateGlow.blp"
+local MarkTex = "Interface\\AddOns\\AbuNameplates\\media\\Mark.blp"
 local TexCoord 		= {24/256, 186/256, 35/128, 59/128}
 local GlowTexCoord 	= {15/256, 195/256, 21/128, 73/128}
 local CbTexCoord 	= {24/256, 186/256, 59/128, 35/128}
 local CbGlowTexCoord= {15/256, 195/256, 73/128, 21/128}
 
-local HighlightTex = "Interface\\AddOns\\AbuEssentials\\Textures\\NamePlate\\Highlight.blp"
+local HighlightTex = "Interface\\AddOns\\AbuNameplates\\media\\Highlight.blp"
 local HiTexCoord 	= {5/128, 105/128, 20/32, 26/32}
 
 local SHORTUPDATE = .1;
 local LONGUPDATE = 1;
+
+local RAID_CLASS_COLORS = RAID_CLASS_COLORS
+local FACTION_BAR_COLORS = FACTION_BAR_COLORS
 
 local FactionColors = {
 	["FriendNPC"] 	= {r = FACTION_BAR_COLORS[6].r, g = FACTION_BAR_COLORS[6].g, b = FACTION_BAR_COLORS[6].b},
@@ -43,9 +42,6 @@ local ThreatColors = {
 }
 ----------------------------------------------------------
 
-local UPDATETIME = .2
-local RAID_CLASS_COLORS = RAID_CLASS_COLORS
-local FACTION_BAR_COLORS = FACTION_BAR_COLORS
 local floor = floor
 
 local Backdrop = {
@@ -73,7 +69,6 @@ local OverrideIcons = {
 	["Earthgrab Totem"] 		= "Interface\\ICONS\\spell_nature_stranglevines",
 }
 
-local NamePlates = { };
 
 local Hider = CreateFrame("Frame")
 Hider:Hide()
@@ -82,6 +77,14 @@ local function HideIt(frame)
 	frame:Hide()
 end
 
+local VisibleNameplates = { };
+ns.VisibleNameplates = VisibleNameplates
+
+local PlateGuidMap = { };
+ns.PlateGuidMap = PlateGuidMap
+
+local NameGuidMap = { };
+ns.NameGuidMap = NameGuidMap
 -----------------------------------------------------------------------------------
 -- General Helper functions
 -----------------------------------------------------------------------------------
@@ -219,18 +222,13 @@ local function UpdateThreat(plate)
 
 	local status = GetThreatStatus(plate._Threat);
 	if ns.PlayerIsTankSpec then
-		status = abs(status - 3) -- Math yeah
+		status = abs(status - 3)
 	end
 
 	if plate.lastthreat == status then return; end
 	plate.lastthreat = status;
-	--[[	threat	glow 		tank 	glow 	bar
-			3	full	red 	0 		none 	green 
-			2	losin	orange	1 		yello	orange
-			1	low 	yellow	2 		orang	default (red)
-			0	noen 	none 	3 		red		default 			]]
 	if plate._Threat:IsVisible() then
-		if status > 0 then -- incase ur a tank
+		if status > 0 then
 			t:SetVertexColor(unpack(ThreatColors[status]))
 			if not t:IsShown() then t:Show() end
 		else
@@ -252,31 +250,32 @@ local function UpdateThreat(plate)
 	end
 end
 
-local PlateGuidMap = { };
-local NameGuidMap = { };
+--------------------------------------------
+-- GUID handlers
+local function AddNameGUID(name, guid)
+	if not NameGuidMap[name] then
+		NameGuidMap[name] = guid
+		ns.UpdateAllQuestPlates()
+	end
+end
 
 local function SetGuid(plate, unit)
 	if (not unit) then -- no unit, educated guess
 		if NameGuidMap[plate.unitName] then
 			plate.guid = NameGuidMap[plate.unitName]
-			PlateGuidMap[plate.guid] = plate
+			--PlateGuidMap[plate.guid] = plate
 		end
 		return;
 	end
 
 	local GUID = UnitGUID(unit)
 	if not GUID then return; end
-
-	if plate.guid ~= GUID then
-		PlateGuidMap[GUID] = plate
-		plate.guid = GUID
-	end
+	PlateGuidMap[GUID] = plate
+	plate.guid = GUID
 
 	ns.CallBackUpateAuras(unit, GUID, plate) -- update auras 
 
-	if UnitIsPlayer(unit) then
-		NameGuidMap[plate.unitName] = plate.guid
-	end
+	AddNameGUID(plate.unitName, plate.guid)
 end
 
 local function ClearGuid(plate, unit)
@@ -290,6 +289,15 @@ function ns.GetNameplateByGuid(GUID)
 	if not GUID then return false; end
 	return PlateGuidMap[GUID]
 end
+-- Map names and GUID's
+ns:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", function(_, _, _, _, srcG, srcN, _, _, dstG, dstN)
+	if srcN then AddNameGUID(srcN, srcG) end
+	if dstN then AddNameGUID(dstN, dstG) end
+end)
+-- flush name cache 
+ns:RegisterEvent("ZONE_CHANGED_NEW_AREA", function() 
+	wipe(NameGuidMap) 
+end)
 -----------------------------------------------------------------------------------
 -- Nameplate OnScripts
 -----------------------------------------------------------------------------------
@@ -301,6 +309,7 @@ end
 
 local function Nameplate_OnShow(self)
 	local plate = self.plate
+	VisibleNameplates[self] = true
 	plate.isSmall = plate._Frame:GetScale() < .8
 	local scale = plate.isSmall and .6 or 1
 	plate:SetSize(WIDTH*scale, TOTALHEIGHT*scale)
@@ -317,20 +326,24 @@ local function Nameplate_OnShow(self)
 
 	self.elapsed = SHORTUPDATE;
 	self.elapsedLong = LONGUPDATE;
+	plate.Health.doNotOverride = nil;
 	plate.lastthreat = 5;
+	
 	plate:Show()
+	plate.Threat:Hide()
 end
 
 local function Nameplate_OnHide(self)
 	local plate = self.plate
+	VisibleNameplates[self] = false
 	plate:Hide()
 	plate:SetFrameLevel(0)
 	plate:ClearGuid()
 	plate.highlighted = nil;
 	plate.target = nil;
-	plate.Health.doNotOverride = nil;
 	plate.Glow:Hide()
 	plate.Highlight:Hide()
+	plate.Threat:Hide()
 end
 
 local function NameplateCastbar_OnValueChanged(Castbar, curTime)
@@ -375,7 +388,7 @@ local function Nameplate_OnUpdate(self, elapsed)
 	if PlateIsTarget(self) or (plate.Castbar and plate.Castbar:IsShown()) then
 		plate.alpha = 1
 	elseif UnitExists("target") then
-		plate.alpha = MINALPHA
+		plate.alpha = cfg.MinimumAlpha
 	else
 		plate.alpha = 1
 	end
@@ -383,9 +396,9 @@ local function Nameplate_OnUpdate(self, elapsed)
 		local change = plate.alpha - plate.lastAlpha
 		local time = .5 * change
 		if 0 < change then
-			ns.UIFrameFadeIn(plate, time, plate.lastAlpha, plate.alpha)
+			AbuGlobal.UIFrameFadeIn(plate, time, plate.lastAlpha, plate.alpha)
 		else
-			ns.UIFrameFadeOut(plate, -time, plate.lastAlpha, plate.alpha)
+			AbuGlobal.UIFrameFadeOut(plate, -time, plate.lastAlpha, plate.alpha)
 		end
 		plate.lastAlpha = plate.alpha
 	end
@@ -497,7 +510,7 @@ local function InitNameplate(self)
 
 	-- Healthbar
 	plate.Health = CreateFrame("Statusbar", nil, plate)
-    plate.Health:SetStatusBarTexture(StatusbarTex, "BACKGROUND", 1)
+    plate.Health:SetStatusBarTexture(cfg.StatusbarTexture, "BACKGROUND", 1)
     plate._Health:HookScript("OnValueChanged", function() Healthbar_OnValueChanged(plate) end)
 
 	plate.Health:SetBackdrop(Backdrop)
@@ -540,7 +553,7 @@ local function InitNameplate(self)
 
 	-- Castbar
 	plate.Castbar:SetParent(plate)
-	plate.Castbar:SetStatusBarTexture(StatusbarTex)
+	plate.Castbar:SetStatusBarTexture(cfg.StatusbarTexture)
 	plate.Castbar:SetFrameLevel(plate.Castbar:GetFrameLevel())
 	plate.Castbar:SetBackdrop(Backdrop)
 	plate.Castbar:SetBackdropColor(0, 0, 0, .5)
@@ -567,7 +580,7 @@ local function InitNameplate(self)
 	plate.Castbar.Name:SetPoint("BOTTOM", plate.Castbar, 0, -5)
 	plate.Castbar.Name:SetPoint("LEFT", plate.Castbar, 5, 0)
 	plate.Castbar.Name:SetPoint("RIGHT", plate.Castbar, -5, 0)
-	plate.Castbar.Name:SetFont(FONT, FONTSIZE, "THINOUTLINE")
+	plate.Castbar.Name:SetFont(cfg.Font, cfg.FontSize, "THINOUTLINE")
 	plate.Castbar.Name:SetShadowColor(0, 0, 0, 0)
 	--		Icon
 	plate.Castbar.Icon:SetTexCoord(.1, .9, .1, .9)
@@ -585,15 +598,13 @@ local function InitNameplate(self)
 	plate.Name:SetPoint("BOTTOM", plate, "TOP", 0, 4)
 	plate.Name:SetPoint("LEFT", plate, -5, 0)
 	plate.Name:SetPoint("RIGHT", plate, 5, 0)
-	plate.Name:SetFont(FONT, FONTSIZE, "THINOUTLINE")
+	plate.Name:SetFont(cfg.Font, cfg.FontSize, "THINOUTLINE")
 
 	-- RaidIcon
 	plate.Raid:SetParent(plate)
 	plate.Raid:ClearAllPoints()
-	plate.Raid:SetSize(RAIDSIZE, RAIDSIZE)
+	plate.Raid:SetSize(cfg.RaidIconSize, cfg.RaidIconSize)
 	plate.Raid:SetPoint("BOTTOM", plate.Name, "TOP", 0, 0)
-
-	ns.CreateAuraFrame(self)
 
 	plate.lastAlpha = 0; -- Need this here, frame outside screen calls onshow again. For fading
 
@@ -605,11 +616,13 @@ local function InitNameplate(self)
 		plate:Hide()
 	end
 
+	ns.CreateAuraFrame(self)
+	ns.CreateQuestStuff(self)
+
 	plate.Castbar:HookScript('OnShow', NameplateCastbar_OnShow)
 	plate.Castbar:HookScript("OnValueChanged", NameplateCastbar_OnValueChanged)
 	self:HookScript("OnUpdate", Nameplate_OnUpdate)
 end
-
 
 local numNamePlates
 WorldFrame:HookScript("OnUpdate", function(self, elap)
@@ -622,7 +635,6 @@ WorldFrame:HookScript("OnUpdate", function(self, elap)
 			if name and name:find("NamePlate") then
 				
 				local plate = CreateFrame("Frame", nil, WorldFrame)
-				NamePlates[obj] = plate
 
 				local mover = CreateFrame("Frame", nil, plate)
 				mover:SetPoint('BOTTOMLEFT', WorldFrame)
@@ -639,6 +651,3 @@ WorldFrame:HookScript("OnUpdate", function(self, elap)
 		end
 	end
 end)
-
-SetCVar("bloatnameplates", 1)
-SetCVar("bloatthreat", 1)
