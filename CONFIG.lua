@@ -2,20 +2,30 @@ local name, ns = ...
 local Gcfg = AbuGlobal.GlobalConfig
 
 ns.Config = {
+	Colors = {
+		Frame 	= Gcfg.Colors.Frame,	
+		Border   = Gcfg.Colors.Border,
+		Interrupt = Gcfg.Colors.Interrupt,
+	},
+
+	IconTextures = {
+		White = Gcfg.IconTextures.White,
+		Normal = Gcfg.IconTextures.Normal,
+		Shadow = Gcfg.IconTextures.Shadow,
+	},
+
 	-- Nameplates
 	StatusbarTexture = Gcfg.Statusbar.Light,
-	Font = Gcfg.Fonts.Normal,
-	Colors = Gcfg.Colors,
-	IconTextures = Gcfg.IconTextures,
 
+	Font = Gcfg.Fonts.Normal,
 	FontSize = 12,
+
 	MinimumAlpha = 0.6,-- Minimum alpha on a nameplate
 	RaidIconSize = 20, -- Size on raid icons
 
 	-- Auras
 	AuraSize = 25,
 	AuraGap = 3,
-	AuraTexture = Gcfg.IconTextures,
 
 	-- Nameplates by default show every debuff that you apply.
 	-- The blacklist hides debuffs that you cast, and the ALL list shows
@@ -58,7 +68,7 @@ ns.Config = {
 			[113952] = true, --Paralytic Poison"
 			[93068] = true, --Master Poisoner
 			[3409] = true,  --Crippling Poison
-			},
+		},
 		['MONK'] = { },
 	},
 	-- SHOW THESE FROM ALL

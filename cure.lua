@@ -14,19 +14,18 @@ local TOTALHEIGHT = (HEIGHT + CBHEIGHT + GAP);
 local BorderTex = "Interface\\AddOns\\AbuNameplates\\media\\Plate.blp"
 local BorderTexGlow = "Interface\\AddOns\\AbuNameplates\\media\\PlateGlow.blp"
 local MarkTex = "Interface\\AddOns\\AbuNameplates\\media\\Mark.blp"
+local HighlightTex = "Interface\\AddOns\\AbuNameplates\\media\\Highlight.blp"
+
 local TexCoord 		= {24/256, 186/256, 35/128, 59/128}
-local GlowTexCoord 	= {15/256, 195/256, 21/128, 73/128}
 local CbTexCoord 	= {24/256, 186/256, 59/128, 35/128}
+
+local GlowTexCoord 	= {15/256, 195/256, 21/128, 73/128}
 local CbGlowTexCoord= {15/256, 195/256, 73/128, 21/128}
 
-local HighlightTex = "Interface\\AddOns\\AbuNameplates\\media\\Highlight.blp"
 local HiTexCoord 	= {5/128, 105/128, 20/32, 26/32}
 
-local SHORTUPDATE = .1;
-local LONGUPDATE = 1;
-
-local RAID_CLASS_COLORS = RAID_CLASS_COLORS
-local FACTION_BAR_COLORS = FACTION_BAR_COLORS
+local SHORTUPDATE = .1
+local LONGUPDATE = 1
 
 local FactionColors = {
 	["FriendNPC"] 	= {r = FACTION_BAR_COLORS[6].r, g = FACTION_BAR_COLORS[6].g, b = FACTION_BAR_COLORS[6].b},
@@ -211,8 +210,7 @@ local function UpdateName(plate)
 	elseif ns.PlayerLevel and tostring(ns.PlayerLevel) == level then
 		level = ""
 	end
-	--plate.Name:SetTextColor(GetFixedColor(plate._Health:GetStatusBarColor()))
-	--plate.Name:SetTextColor(GetFixedColor(plate._Name:GetTextColor()))
+
 	plate.Name:SetText(levelColor..level.."|r "..plate.unitName)
 end
 
@@ -324,10 +322,10 @@ local function Nameplate_OnShow(self)
 	plate:UpdateName()
 	plate:SetGuid() -- Try at least
 
-	self.elapsed = SHORTUPDATE;
-	self.elapsedLong = LONGUPDATE;
-	plate.Health.doNotOverride = nil;
-	plate.lastthreat = 5;
+	self.elapsed = SHORTUPDATE
+	self.elapsedLong = LONGUPDATE
+	plate.Health.doNotOverride = nil
+	plate.lastthreat = nil
 	
 	plate:Show()
 	plate.Threat:Hide()
