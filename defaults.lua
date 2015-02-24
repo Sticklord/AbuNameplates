@@ -72,7 +72,7 @@ ns.Config = {
 		['MONK'] = { },
 	},
 	-- SHOW THESE FROM ALL
-	ALL = {
+	WHITELIST = {
 		[23333] = true,  -- Horde Flag
 		[34976] = true,  -- Netherstorm Flag
 		[23335] = true,  -- Alliance Flag

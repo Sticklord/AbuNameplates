@@ -4,6 +4,7 @@
 
 libs\AbuTheLib.lua
 
+defaults.lua
 CONFIG.lua
 
 cure.lua

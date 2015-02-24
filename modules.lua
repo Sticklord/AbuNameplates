@@ -36,7 +36,7 @@ local function UpdateAuras(e)
 	end
 
 	wipe(WhiteListAll)
-	for id, v in pairs(cfg.ALL) do
+	for id, v in pairs(cfg.WHITELIST) do
 		WhiteListAll[id] = true
 	end
 end
@@ -141,6 +141,10 @@ end)
 ---------------------------------------------------------------------
 --		Auras on nameplate sometimes
 
+-- constants
+local MAX_AURAS = 5
+
+
 local AuraDurationCache = {} -- Cache for guessing duration so we can use CLEU
 local AuraLists = {}
 
@@ -240,7 +244,8 @@ local function CreateAuraButton(self)
 	return b
 end
 
-local function GetAuraButton(Auras, spellID, phony)
+local function GetAuraButton(plate, spellID, phony)
+	local Auras = plate.Auras
 	if Auras.SpellIDs[spellID] then
 		if (phony and not Auras.SpellIDs[spellID].phony) then 
 			return; 
@@ -263,7 +268,7 @@ local function GetAuraButton(Auras, spellID, phony)
 end
 
 local function UpdateAuraButton(plate, spellID, texture, count, duration, expiration, phony)
-	local button = GetAuraButton(plate.Auras, spellID, phony)
+	local button = GetAuraButton(plate, spellID, phony)
 	if button then
 		plate.Auras.SpellIDs[spellID] = button;
 		button.Icon:SetTexture(texture)
@@ -336,12 +341,12 @@ function ns.CallBackUpateAuras(unit, guid, plate) -- When a plate gets a guid
 end
 
 local function UpdateAurasByGuid(dstGUID, spellID, expire, count, srcGUID, duration, texture) -- Shit way
-	local _, instance = IsInInstance() 
-	local buUnit = instance == "arena" and "arena" or "boss"
+	local instance, type = IsInInstance() 
+	local buUnit = type == "arena" and "arena" or "boss"
 
 	if dstGUID == UnitGUID("mouseover") then
 		return UpdateAuraByUnit("mouseover", dstGUID);
-	else
+	elseif instance then
 		for i = 1, 5 do
 			if dstGUID == UnitGUID(buUnit..i) then
 				return UpdateAuraByUnit(buUnit..i, dstGUID);
@@ -386,7 +391,7 @@ ns:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", function(event, _, subEvent, _, 
 				local duration = AuraDurationCache[spellID] or 0
 				local texture = GetSpellTexture(spellID or 0)
 				count = tonumber(count or 1) and count or 1
-				UpdateAurasByGuid(dstGUID, spellID, GetTime() + (duration or 0), count, srcGUID, duration, texture or "")
+				UpdateAurasByGuid(dstGUID, spellID, GetTime() + duration, count, srcGUID, duration, texture or "")
 			elseif HideEvents[subEvent] then
 				HideAura(dstGUID, spellID, srcGUID)
 			end
@@ -397,16 +402,13 @@ end)
 function ns.CreateAuraFrame(self)
 	local plate = self.plate
 	plate.Auras = CreateFrame("Frame", plate)
-	plate.Auras:SetHeight(32)
 	plate.Auras:Show()
 	plate.Auras:SetSize(plate:GetWidth()+20, plate:GetHeight())
 	plate.Auras:SetPoint("BOTTOMLEFT", plate, "TOPLEFT", -10, 20)
-
 	plate.Auras.UpdateButtonPositions = UpdateButtonPositions
 
 	plate.Auras.Buttons = { };
 	plate.Auras.SpellIDs = { };
-	plate.Auras.numVisible = 0;
 	plate.Auras.MaxButtons = (plate:GetWidth()+25) / (cfg.AuraSize + cfg.AuraGap)
 
 	plate.Auras:SetScript("OnHide", function(self)

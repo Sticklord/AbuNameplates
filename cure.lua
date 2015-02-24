@@ -381,9 +381,11 @@ local function Nameplate_OnUpdate(self, elapsed)
 	self.elapsedLong = elapsed + self.elapsedLong;
 	local plate = self.plate
 
+	local isTarget = PlateIsTarget(self)
+
 	-- Update Alpha
 	plate.alpha = self:GetAlpha()
-	if PlateIsTarget(self) or (plate.Castbar and plate.Castbar:IsShown()) then
+	if isTarget or (plate.Castbar and plate.Castbar:IsShown()) then
 		plate.alpha = 1
 	elseif UnitExists("target") then
 		plate.alpha = cfg.MinimumAlpha
@@ -413,7 +415,7 @@ local function Nameplate_OnUpdate(self, elapsed)
 		plate.Highlight:Hide();
 	end
 
-	if PlateIsTarget(self) then
+	if isTarget then
 		if not plate.target then
 			plate.target = true;
 			plate:SetGuid('target');
