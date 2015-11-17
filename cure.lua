@@ -452,7 +452,7 @@ end
 local function InitNameplate(self)
 	-- Main frame
 	local Frame, Nameframe = self:GetChildren()
-	local Health, Castbar = Frame:GetChildren()
+	local Health, _, Castbar = Frame:GetChildren()
 	local Name = Nameframe:GetRegions()
 	local Threat, Border, Highlight, Level, Boss, Raid, Dragon = Frame:GetRegions()
 	local cTexture, cBorder, cShield, cIcon, cName, cNameshadow = Castbar:GetRegions()
