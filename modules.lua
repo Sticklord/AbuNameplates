@@ -1,6 +1,6 @@
 local _, ns = ...
 local cfg = ns.Config
-
+if true then return end
 ----------- [[	Update 			  	]]  --------------------
 local function UpdatePlayerData(e)
 	local level = UnitLevel("player");
