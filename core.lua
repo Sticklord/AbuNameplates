@@ -1,20 +1,110 @@
---[=====================================[
+local ADDON, ns = ...
 
-	Based off rNamePlates2 by zork	b
+local DriverFrame = CreateFrame('Frame', ADDON..'DriverFrame', UIParent)
+local UnitFrameMixin = {}
+local UnitBuffMixin = {}
+_G[ADDON] = ns
 
---]=====================================]
+local config = {
+	Colors = {
+		Frame 	= AbuGlobal.GlobalConfig.Colors.Frame,	
+		Border   = AbuGlobal.GlobalConfig.Colors.Border,
+		Interrupt = AbuGlobal.GlobalConfig.Colors.Interrupt,
+	},
 
-local _, ns = ...
+	IconTextures = {
+		White = AbuGlobal.GlobalConfig.IconTextures.White,
+		Normal = AbuGlobal.GlobalConfig.IconTextures.Normal,
+		Shadow = AbuGlobal.GlobalConfig.IconTextures.Shadow,
+	},
 
-local cfg = ns.Config
+	-- Nameplates
+	StatusbarTexture = AbuGlobal.GlobalConfig.Statusbar.Light,
+	Font = AbuGlobal.GlobalConfig.Fonts.Normal,
+	FontSize = 12,
 
-local WIDTH, HEIGHT, CBHEIGHT, GAP = 105, 8,8,7
-local TOTALHEIGHT = (HEIGHT + CBHEIGHT + GAP);
+	friendlyConfig = {
+		useClassColors = false,
+		displaySelectionHighlight = true,
+		colorHealthBySelection = true,
+		considerSelectionInCombatAsHostile = true,
+		displayNameByPlayerNameRules = true,
+		colorHealthByRaidIcon = true,
+		displayName = true,
+		filter = "NONE",
 
-local BorderTex = "Interface\\AddOns\\AbuNameplates\\media\\Plate.blp"
-local BorderTexGlow = "Interface\\AddOns\\AbuNameplates\\media\\PlateGlow.blp"
-local MarkTex = "Interface\\AddOns\\AbuNameplates\\media\\Mark.blp"
-local HighlightTex = "Interface\\AddOns\\AbuNameplates\\media\\Highlight.blp"
+		castBarHeight = 8,
+		healthBarHeight = 4*2,
+
+		displayAggroHighlight = false,
+		displaySelectionHighlight = true,
+		--fadeOutOfRange = false,
+		--displayStatusText = true,
+		displayHealPrediction = true,
+		--displayDispelDebuffs = true,
+		colorNameBySelection = true,
+		colorNameWithExtendedColors = true,
+		colorHealthWithExtendedColors = true,
+		colorHealthBySelection = true,
+		considerSelectionInCombatAsHostile = true,
+		--smoothHealthUpdates = false,
+		displayNameWhenSelected = true,
+		displayNameByPlayerNameRules = true,
+	},
+
+	enemyConfig = {
+		useClassColors = true,
+		displayAggroHighlight = true,
+		--playLoseAggroHighlight = true,
+		displaySelectionHighlight = true,
+		colorHealthBySelection = true,
+		considerSelectionInCombatAsHostile = true,
+		displayNameByPlayerNameRules = true,
+		colorHealthByRaidIcon = true,
+
+		displayName = true,
+		tankBorderColor = true,
+
+		castBarHeight = 8,
+		healthBarHeight = 4*2,
+		filter = "HARMFUL|INCLUDE_NAME_PLATE_ONLY",
+
+		displayName = true,
+		--fadeOutOfRange = false,
+		displayHealPrediction = true,
+		colorNameBySelection = true,
+		--smoothHealthUpdates = false,
+		displayNameWhenSelected = true,
+		greyOutWhenTapDenied = true,
+		showClassificationIndicator = true,
+	},
+
+	playerConfig = {
+		displayHealPrediction = true,
+		filter = "HELPFUL",
+		useClassColors = true,
+		hideCastbar = true,
+		healthBarHeight = 4*2,
+		manaBarHeight = 4*2,
+		
+		displaySelectionHighlight = false,
+		displayAggroHighlight = false,
+		displayName = false,
+		fadeOutOfRange = false,
+		colorNameBySelection = true,
+		smoothHealthUpdates = false,
+		displayNameWhenSelected = false,
+		hideCastbar = true,
+	},
+}
+ns.config = config
+ns.DriverFrame = DriverFrame
+ns.UnitFrameMixin = UnitFrameMixin
+
+local BorderTex = 'Interface\\AddOns\\AbuNameplates\\media\\Plate.blp'
+local BorderTexGlow = 'Interface\\AddOns\\AbuNameplates\\media\\PlateGlow.blp'
+local MarkTex = 'Interface\\AddOns\\AbuNameplates\\media\\Mark.blp'
+local HighlightTex = 'Interface\\AddOns\\AbuNameplates\\media\\Highlight.blp'
 
 local TexCoord 		= {24/256, 186/256, 35/128, 59/128}
 local CbTexCoord 	= {24/256, 186/256, 59/128, 35/128}
@@ -24,622 +114,675 @@ local CbGlowTexCoord= {15/256, 195/256, 73/128, 21/128}
 
 local HiTexCoord 	= {5/128, 105/128, 20/32, 26/32}
 
-local SHORTUPDATE = .1
-local LONGUPDATE = 1
-
-local FactionColors = {
-	["FriendNPC"] 	= {r = FACTION_BAR_COLORS[6].r, g = FACTION_BAR_COLORS[6].g, b = FACTION_BAR_COLORS[6].b},
-	["FriendPlayer"]= {r = .35, g = 0.35, b = 1},
-	["HostileNPC"] 	= {r = FACTION_BAR_COLORS[2].r, g = FACTION_BAR_COLORS[2].g, b = FACTION_BAR_COLORS[2].b},
-	["NeutralNPC"] 	= {r = FACTION_BAR_COLORS[4].r, g = FACTION_BAR_COLORS[4].g, b = FACTION_BAR_COLORS[4].b},
+local raidIconColor = {
+	[1] = {r = 1.0,  g = 0.92, b = 0,     },
+	[2] = {r = 0.98, g = 0.57, b = 0,     },
+	[3] = {r = 0.83, g = 0.22, b = 0.9,   },
+	[4] = {r = 0.04, g = 0.95, b = 0,     },
+	[5] = {r = 0.7,  g = 0.82, b = 0.875, },
+	[6] = {r = 0,    g = 0.71, b = 1,     },
+	[7] = {r = 1.0,  g = 0.24, b = 0.168, },
+	[8] = {r = 0.98, g = 0.98, b = 0.98,  },
 }
-
-local ThreatColors = {
-   [1] = {1, 1, 0.2},
-   [2] = {1, .7, .3},
-   [3] = {1, 0.1, 0.1},
-}
-----------------------------------------------------------
-
-local floor = floor
 
 local Backdrop = {
 	bgFile = 'Interface\\Buttons\\WHITE8x8',
 }
 
---  [[  Totem Icons  ]]  --
-local OverrideIcons = {
-	["Stormlash Totem"]			= "Interface\\ICONS\\ability_shaman_tranquilmindtotem",
-	["Healing Tide Totem"] 		= "Interface\\ICONS\\ability_shaman_healingtide",
-	["Earth Elemental Totem"] 	= "Interface\\ICONS\\spell_nature_earthelemental_totem",
-	["Searing Totem"] 			= "Interface\\ICONS\\spell_fire_searingtotem",
-	["Fire Elemental Totem"] 	= "Interface\\ICONS\\spell_fire_elemental_totem",
-	["Healing Stream Totem"] 	= "Interface\\ICONS\\inv_spear_04",
-	["Tremor Totem"] 			= "Interface\\ICONS\\spell_nature_tremortotem",
-	["Capacitor Totem"] 		= "Interface\\ICONS\\spell_nature_brilliance",
-	["Earthbind Totem"] 		= "Interface\\ICONS\\spell_nature_strengthofearthtotem02",
-	["Magma Totem"] 			= "Interface\\ICONS\\spell_fire_selfdestruct",
-	-- Specializations
-	["Mana Tide Totem"] 		= "Interface\\ICONS\\spell_frost_summonwaterelemental",
-	["Spirit Link Totem"] 		= "Interface\\ICONS\\spell_shaman_spiritlink",
-	-- Talents
-	["Windwalk Totem"] 			= "Interface\\ICONS\\ability_shaman_windwalktotem",
-	["Stone Bulwark Totem"] 	= "Interface\\ICONS\\ability_shaman_stonebulwark",
-	["Earthgrab Totem"] 		= "Interface\\ICONS\\spell_nature_stranglevines",
-}
+-------
+--  DriverFrame
+------
 
-
-local Hider = CreateFrame("Frame")
-Hider:Hide()
-local function HideIt(frame)
-	frame:SetParent(Hider)
-	frame:Hide()
-end
-
-local VisibleNameplates = { };
-ns.VisibleNameplates = VisibleNameplates
-
-local PlateGuidMap = { };
-ns.PlateGuidMap = PlateGuidMap
-
-local NameGuidMap = { };
-ns.NameGuidMap = NameGuidMap
------------------------------------------------------------------------------------
--- General Helper functions
------------------------------------------------------------------------------------
-
-local function GetFixedColor(r, g, b)
-	return floor(r *100 + .5)/100, floor(g *100 + .5)/100, floor(b *100 + .5)/100
-end
-
-local function GetHexColorString(r, g, b)
-	r, g, b = GetFixedColor(r, g, b)
-	r = r <= 1 and r >= 0 and r or 0
-	g = g <= 1 and g >= 0 and g or 0
-	b = b <= 1 and b >= 0 and b or 0
-	return string.format("|cff%02x%02x%02x", r*255, g*255, b*255)
-end
-
-local function GetFaction(r,g,b)
-	if (r < .01) then
-		if (b < .01) and (g > .99) then 
-			return "Friend", "NPC";
-		elseif (b > .99) and (g < .01) then 
-			return "Friend", "Player"; 
+function DriverFrame:OnEvent(event, ...)
+	if (event == 'ADDON_LOADED') then
+		local addon_name = ...
+		if (addon_name == ADDON) then
+			self:OnLoad()
 		end
-	elseif (r > .99) then
-		if (b < .01) and (g > .99) then 
-			return "Neutral", "NPC";
-		elseif (b < .01) and (g < .01) then
-			return "Hostile", "NPC"; 
+	elseif event == 'VARIABLES_LOADED' then
+		self:UpdateNamePlateOptions();
+	elseif (event == 'NAME_PLATE_CREATED') then
+		local namePlateFrameBase = ...
+		self:OnNamePlateCreated(namePlateFrameBase)
+	elseif (event == 'NAME_PLATE_UNIT_ADDED') then
+		local namePlateUnitToken = ...
+		self:OnNamePlateAdded(namePlateUnitToken)
+	elseif (event == 'NAME_PLATE_UNIT_REMOVED') then
+		local namePlateUnitToken = ...
+		self:OnNamePlateRemoved(namePlateUnitToken)
+	elseif event == 'PLAYER_TARGET_CHANGED' then
+		self:OnTargetChanged();
+	elseif event == 'DISPLAY_SIZE_CHANGED' then -- resolution change
+		self:UpdateNamePlateOptions()
+	elseif event == "CVAR_UPDATE" then
+		local name = ...;
+		if name == "SHOW_CLASS_COLOR_IN_V_KEY" or name == "SHOW_NAMEPLATE_LOSE_AGGRO_FLASH" then
+			self:UpdateNamePlateOptions();
 		end
-	elseif (r > .5 and r < .55) and (g > .5 and g < .55) and (g > .5 and g < .55) then
-		return "Tapped", "NPC"
-	end
-	return "Hostile", "Player"
-end
-
-local function CanHaveThreat(r, g, b)
-	local r, f = GetFaction(r,g,b)
-	return f == "NPC" and r ~= "Friend"
-end
-
-local function IsInCombat(plate)
-	local r,g,b = plate._Name:GetTextColor()
-	return (r > .5) and (g < .5);
-end
-
-local function GetThreatStatus(_Threat) -- 0 - 3, none - high
-	if (not _Threat:IsShown()) then
-		return 0; -- none
-	end
-	local r,g,b = _Threat:GetVertexColor()
-	if r > 0 then
-		if g > 0 then
-			if b > 0 then
-				return 1; -- low
-			end
-			return 2; -- medium
-		end
-		return 3; -- high
-	end
-	return 0; -- none
-end
-
-local function PlateIsTarget(self)
-	if not (UnitExists("target")) then return false; end
-	if (self:GetAlpha() > .95) then
-		return true;
-	end
-	return false;
-end
-
------------------------------------------------------------------------------------
--- Nameplate functions
------------------------------------------------------------------------------------
-
-local function UpdateHealthColor(plate)
-	if plate.Health.doNotOverride then return; end
-	local r, g, b = GetFixedColor(plate._Health:GetStatusBarColor())
-	local re, f = GetFaction(r,g,b)
-	local color = FactionColors[re..f]
-	if color then
-		plate.Health:SetStatusBarColor(color.r, color.g, color.b);
-	else
-		plate.Health:SetStatusBarColor(r, g, b)
+	elseif event == 'UPDATE_MOUSEOVER_UNIT' then
+		self:UpdateMouseOver()
+	elseif event == 'UNIT_FACTION' then
+		self:OnUnitFactionChanged(...)
+	elseif event == 'RAID_TARGET_UPDATE' then
+		self:OnRaidTargetUpdate()
+	elseif event == 'QUEST_LOG_UPDATE' then
+		self:OnQuestLogUpdate()
 	end
 end
 
-local function UpdateName(plate)
-	plate.unitName = plate._Name:GetText() or "Unknown"
-	-- Totemicon instead of name
-	local icon = OverrideIcons[plate.unitName]
-	if icon then
-		if (not plate.TotemIcon) then
-			plate.TotemIcon = CreateFrame("Frame", nil, plate)
-			plate.TotemIcon:EnableMouse(false)
-			plate.TotemIcon:SetSize(30, 30)
-			plate.TotemIcon:SetPoint("BOTTOM", plate, "TOP", 0, 5)
-			plate.TotemIcon.Border = plate.TotemIcon:CreateTexture(nil, "BACKGROUND", nil, 1)
-			plate.TotemIcon.Border:SetTexture(cfg.IconTextures.White)
-			plate.TotemIcon.Border:SetPoint("TOPRIGHT", plate.TotemIcon, 2, 2)
-			plate.TotemIcon.Border:SetPoint("BOTTOMLEFT", plate.TotemIcon, -2, -2)
-		end
+DriverFrame:SetScript('OnEvent', DriverFrame.OnEvent)
+DriverFrame:RegisterEvent'ADDON_LOADED'
+DriverFrame:RegisterEvent'VARIABLES_LOADED'
 
-		plate.TotemIcon:SetBackdrop({
-			bgFile = icon,
-			insets = { top = -2, left = -2, bottom = -2, right = -2 },
-		})
-		plate.Name:Hide()
-		plate.TotemIcon.Border:SetVertexColor(GetFixedColor(plate._Health:GetStatusBarColor()))
-		plate.TotemIcon:Show()
+function DriverFrame:DisableBlizzard()
+	NamePlateDriverFrame:UnregisterAllEvents()
+	NamePlateDriverFrame:Hide()
+
+	NamePlateDriverFrame.UpdateNamePlateOptions = function()
+		DriverFrame:UpdateNamePlateOptions()
+	end
+end
+
+function DriverFrame:OnLoad()
+	self:DisableBlizzard()
+
+	self:RegisterEvent'NAME_PLATE_CREATED'
+	self:RegisterEvent'NAME_PLATE_UNIT_ADDED'
+	self:RegisterEvent'NAME_PLATE_UNIT_REMOVED'
+
+	self:RegisterEvent'PLAYER_TARGET_CHANGED'
+
+	self:RegisterEvent'DISPLAY_SIZE_CHANGED' -- Resolution change
+	self:RegisterEvent'CVAR_UPDATE'
+
+	self:RegisterEvent'UPDATE_MOUSEOVER_UNIT'
+	self:RegisterEvent'UNIT_FACTION'
+
+	self:RegisterEvent'RAID_TARGET_UPDATE'
+	self:RegisterEvent'QUEST_LOG_UPDATE'
+end
+
+function DriverFrame:UpdateNamePlateOptions()
+	self.baseNamePlateWidth = 110;
+	self.baseNamePlateHeight = 45;
+
+	local namePlateVerticalScale = tonumber(GetCVar("NamePlateVerticalScale"));
+	local horizontalScale = tonumber(GetCVar("NamePlateHorizontalScale"));
+	C_NamePlate.SetNamePlateOtherSize(self.baseNamePlateWidth * horizontalScale, self.baseNamePlateHeight);
+	C_NamePlate.SetNamePlateSelfSize(self.baseNamePlateWidth * horizontalScale, self.baseNamePlateHeight);
+
+
+	for i, frame in ipairs(C_NamePlate.GetNamePlates()) do
+		frame.UnitFrame:ApplyFrameOptions(frame.UnitFrame.unit);
+		frame.UnitFrame:UpdateAllElements()
+	end
+
+	self:UpdateClassResourceBar()
+	self:UpdateManaBar()
+end
+
+function DriverFrame:OnNamePlateCreated(nameplate)
+	local f = CreateFrame('Button', nameplate:GetName()..'UnitFrame', nameplate)
+	f:SetAllPoints(nameplate)
+	f:Show()
+	Mixin(f, UnitFrameMixin)
+	f:Create(nameplate)
+	f:EnableMouse(false)
+
+	nameplate.UnitFrame = f
+end
+
+function DriverFrame:OnNamePlateAdded(namePlateUnitToken)
+	local nameplate = C_NamePlate.GetNamePlateForUnit(namePlateUnitToken)
+	nameplate.UnitFrame:ApplyFrameOptions(namePlateUnitToken)
+	nameplate.UnitFrame:OnAdded(namePlateUnitToken)
+	nameplate.UnitFrame:UpdateAllElements()
+
+	self:UpdateClassResourceBar()
+	self:UpdateManaBar()
+end
+
+function DriverFrame:OnNamePlateRemoved(namePlateUnitToken)
+	local nameplate = C_NamePlate.GetNamePlateForUnit(namePlateUnitToken)
+	nameplate.UnitFrame:OnAdded(nil)
+end
+
+function DriverFrame:OnTargetChanged()
+	local nameplate = C_NamePlate.GetNamePlateForUnit'target'
+	if nameplate then
+		nameplate.UnitFrame:OnUnitAuraUpdate()
+	end
+
+	self:UpdateClassResourceBar()
+	self:UpdateManaBar()
+end
+
+function DriverFrame:OnRaidTargetUpdate()
+	for _, frame in pairs(C_NamePlate.GetNamePlates()) do
+		frame.UnitFrame:UpdateRaidTarget()
+		CompactUnitFrame_UpdateHealthColor(frame.UnitFrame)
+	end
+end
+
+function DriverFrame:OnUnitFactionChanged(unit)
+	local nameplate = C_NamePlate.GetNamePlateForUnit(unit);
+	if (nameplate) then
+		CompactUnitFrame_UpdateName(nameplate.UnitFrame);
+		CompactUnitFrame_UpdateHealthColor(nameplate.UnitFrame);
+	end
+end
+
+function DriverFrame:OnQuestLogUpdate()
+	for _, frame in pairs(C_NamePlate.GetNamePlates()) do
+		frame.UnitFrame:UpdateQuestVisuals()
+	end
+end
+
+local mouseoverframe -- if theres a better way im all ears
+function DriverFrame:OnUpdate(elapsed) 
+	local nameplate = C_NamePlate.GetNamePlateForUnit('mouseover')
+	if not nameplate or nameplate ~= mouseoverframe then
+		mouseoverframe.UnitFrame.hoverHighlight:Hide()
+		mouseoverframe = nil
+		self:SetScript('OnUpdate', nil)
+	end
+end
+
+function DriverFrame:UpdateMouseOver()
+	local nameplate = C_NamePlate.GetNamePlateForUnit('mouseover')
+
+	if mouseoverframe == nameplate then
+		return
+	elseif mouseoverframe then
+		mouseoverframe.UnitFrame.hoverHighlight:Hide()
+		self:SetScript('OnUpdate', nil)
+	end
+
+	if nameplate then
+		nameplate.UnitFrame.hoverHighlight:Show()
+		mouseoverframe = nameplate
+		self:SetScript('OnUpdate', self.OnUpdate) --onupdate until mouse leaves frame
+	end
+end
+
+-------------------------
+--	Class Resource bar
+-------------------------
+
+function DriverFrame:UpdateClassResourceBar()
+	local classResourceBar = NamePlateDriverFrame.nameplateBar;
+	if ( not classResourceBar ) then 
 		return;
-	elseif plate.TotemIcon then
-		plate.TotemIcon:SetBackdrop(nil)
-		plate.TotemIcon:Hide()
-		plate.Name:Show()
 	end
+	classResourceBar:Hide();
 
-	local level = plate._Level:GetText() or "-1"
-	local levelColor = GetHexColorString(plate._Level:GetTextColor())
-	if plate._Boss:IsShown() then
-		level = "??"
-		levelColor = "|cffAF5050"
-	elseif plate._Dragon:IsShown() then
-		level = level.."+"
-	elseif ns.PlayerLevel and tostring(ns.PlayerLevel) == level then
-		level = ""
-	end
-
-	plate.Name:SetText(levelColor..level.."|r "..plate.unitName)
-end
-
-local function UpdateThreat(plate)
-	if not plate.canHaveThreat then return; end
-	local t = plate.Threat
-
-	local status = GetThreatStatus(plate._Threat);
-	if ns.PlayerIsTankSpec then
-		status = abs(status - 3)
-	end
-
-	if plate.lastthreat == status then return; end
-	plate.lastthreat = status;
-	if plate._Threat:IsVisible() then
-		if status > 0 then
-			t:SetVertexColor(unpack(ThreatColors[status]))
-			if not t:IsShown() then t:Show() end
-		else
-			if t:IsShown() then t:Hide() end
-		end
-		if ns.PlayerIsTankSpec and status < 2 then
-			if status == 0 then
-				plate.Health:SetStatusBarColor(0, 1, 0)
-			elseif status == 1 then
-				plate.Health:SetStatusBarColor(unpack(ThreatColors[1]))
-			end
-			plate.Health.doNotOverride = true
-		else
-			plate.Health.doNotOverride = nil
-		end
-	else
-		if t:IsShown() then t:Hide() end
-		plate.Health.doNotOverride = nil
-	end
-end
-
---------------------------------------------
--- GUID handlers
-local function AddNameGUID(name, guid)
-	if not NameGuidMap[name] then
-		NameGuidMap[name] = guid
-		ns.UpdateAllQuestPlates()
-	end
-end
-
-local function SetGuid(plate, unit)
-	if (not unit) then -- no unit, educated guess
-		if NameGuidMap[plate.unitName] then
-			plate.guid = NameGuidMap[plate.unitName]
-			--PlateGuidMap[plate.guid] = plate
-		end
+	local showSelf = GetCVar("nameplateShowSelf");
+	if ( showSelf == "0" ) then
 		return;
 	end
 
-	local GUID = UnitGUID(unit)
-	if not GUID then return; end
-	PlateGuidMap[GUID] = plate
-	plate.guid = GUID
-
-	ns.CallBackUpateAuras(unit, GUID, plate) -- update auras 
-
-	AddNameGUID(plate.unitName, plate.guid)
-end
-
-local function ClearGuid(plate, unit)
-	if PlateGuidMap[plate.guid] == plate then
-		PlateGuidMap[plate.guid] = nil;
+	local targetMode = GetCVarBool("nameplateResourceOnTarget");
+	if (classResourceBar.overrideTargetMode ~= nil) then
+		targetMode = classResourceBar.overrideTargetMode;
 	end
-	plate.guid = nil
-end
 
-function ns.GetNameplateByGuid(GUID)
-	if not GUID then return false; end
-	return PlateGuidMap[GUID]
-end
--- Map names and GUID's
-ns:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", function(_, _, _, _, srcG, srcN, _, _, dstG, dstN)
-	if srcN then AddNameGUID(srcN, srcG) end
-	if dstN then AddNameGUID(dstN, dstG) end
-end)
--- flush name cache 
-ns:RegisterEvent("ZONE_CHANGED_NEW_AREA", function() 
-	wipe(NameGuidMap) 
-end)
------------------------------------------------------------------------------------
--- Nameplate OnScripts
------------------------------------------------------------------------------------
-
-local function Healthbar_OnValueChanged(plate)
-	plate.Health:SetMinMaxValues(plate._Health:GetMinMaxValues())
-	plate.Health:SetValue(plate._Health:GetValue()) 
-end
-
-local function Nameplate_OnShow(self)
-	local plate = self.plate
-	VisibleNameplates[self] = true
-	plate.isSmall = plate._Frame:GetScale() < .8
-	local scale = plate.isSmall and .6 or 1
-	plate:SetSize(WIDTH*scale, TOTALHEIGHT*scale)
-
-	plate.Health:ClearAllPoints()
-	plate.Health:SetPoint("TOP", plate)
-	plate.Health:SetPoint("LEFT", plate)
-	plate.Health:SetPoint("RIGHT", plate)
-	plate.Health:SetHeight(HEIGHT*scale)
-	plate._Dragon:SetTexture(nil)
-
-	plate:UpdateName()
-	plate:SetGuid() -- Try at least
-
-	self.elapsed = SHORTUPDATE
-	self.elapsedLong = LONGUPDATE
-	plate.Health.doNotOverride = nil
-	plate.lastthreat = nil
-	
-	plate:Show()
-	plate.Threat:Hide()
-end
-
-local function Nameplate_OnHide(self)
-	local plate = self.plate
-	VisibleNameplates[self] = false
-	plate:Hide()
-	plate:SetFrameLevel(0)
-	plate:ClearGuid()
-	plate.highlighted = nil;
-	plate.target = nil;
-	plate.Glow:Hide()
-	plate.Highlight:Hide()
-	plate.Threat:Hide()
-end
-
-local function NameplateCastbar_OnValueChanged(Castbar, curTime)
-	if Castbar.Shield:IsShown() then
-		Castbar.Border:SetAlpha(1)
-		Castbar.Border:Show()
-		Castbar.Shield:SetVertexColor(1, .9, 0)
-	end
-	Castbar.Border:SetVertexColor(r, g, b, 1)
-end
-
-local function NameplateCastbar_OnShow(Castbar)
-	local plate = Castbar:GetParent()
-	local scale = plate.isSmall and .6 or 1
-
-	Castbar:ClearAllPoints()
-	Castbar:SetPoint("BOTTOM", plate)
-	Castbar:SetPoint("LEFT", plate)
-	Castbar:SetPoint("RIGHT", plate)
-	Castbar:SetHeight(CBHEIGHT*scale)
-
-	local r,g,b = unpack(cfg.Colors.Frame)
-	Castbar.Border:SetVertexColor(r, g, b, 1)
-	
-	if Castbar.Shield:IsShown() then
-		Castbar.IconBorder:SetTexture(cfg.IconTextures.White)
-		Castbar.IconBorder:SetVertexColor(unpack(cfg.Colors.Interrupt))
-	else
-		Castbar.IconBorder:SetTexture(cfg.IconTextures.Normal)
-		Castbar.IconBorder:SetVertexColor(unpack(cfg.Colors.Border))
-	end
-end
-
---  [[  OnUpdate Function  ]]  --
-local function Nameplate_OnUpdate(self, elapsed)
-	self.elapsed = elapsed + self.elapsed;
-	self.elapsedLong = elapsed + self.elapsedLong;
-	local plate = self.plate
-
-	local isTarget = PlateIsTarget(self)
-
-	-- Update Alpha
-	plate.alpha = self:GetAlpha()
-	if isTarget or (plate.Castbar and plate.Castbar:IsShown()) then
-		plate.alpha = 1
-	elseif UnitExists("target") then
-		plate.alpha = cfg.MinimumAlpha
-	else
-		plate.alpha = 1
-	end
-	if plate.alpha ~= plate.lastAlpha then
-		local change = plate.alpha - plate.lastAlpha
-		local time = .5 * change
-		if 0 < change then
-			AbuGlobal.UIFrameFadeIn(plate, time, plate.lastAlpha, plate.alpha)
-		else
-			AbuGlobal.UIFrameFadeOut(plate, -time, plate.lastAlpha, plate.alpha)
+	if ( targetMode ) then
+		local namePlateTarget = C_NamePlate.GetNamePlateForUnit("target");
+		if ( namePlateTarget ) then
+			classResourceBar:SetParent(NamePlateTargetResourceFrame);
+			NamePlateTargetResourceFrame:SetParent(namePlateTarget.UnitFrame);
+			NamePlateTargetResourceFrame:ClearAllPoints();
+			NamePlateTargetResourceFrame:SetPoint("BOTTOM", namePlateTarget.UnitFrame.name, "TOP", 0, 9);
+			classResourceBar:Show();
 		end
-		plate.lastAlpha = plate.alpha
-	end
-
-	-- Mouseover / target
-	if plate._Highlight:IsShown() then
-		if not plate.highlighted then
-			plate.highlighted = true;
-			plate.Highlight:Show();
-			plate:SetGuid('mouseover'); -- It's moused over, lets grab it while its hot
+		NamePlateTargetResourceFrame:SetShown(namePlateTarget ~= nil);
+	elseif ( not targetMode ) then
+		local namePlatePlayer = C_NamePlate.GetNamePlateForUnit("player");
+		if ( namePlatePlayer ) then
+			classResourceBar:SetParent(NamePlatePlayerResourceFrame);
+			NamePlatePlayerResourceFrame:SetParent(namePlatePlayer.UnitFrame);
+			NamePlatePlayerResourceFrame:ClearAllPoints();
+			NamePlatePlayerResourceFrame:SetPoint("TOP",ClassNameplateManaBarFrame, "BOTTOM", 0, -3);
+			classResourceBar:Show();
 		end
-	elseif plate.highlighted then
-		plate.highlighted = nil;
-		plate.Highlight:Hide();
-	end
-
-	if isTarget then
-		if not plate.target then
-			plate.target = true;
-			plate:SetGuid('target');
-			plate:SetFrameLevel(5);
-			plate.Glow:Show()
-		end
-	elseif plate.target then
-		plate.target = nil;
-		plate:SetFrameLevel(0);
-		plate.Glow:Hide()
-	end
-
-	-- Short Updates
-	if self.elapsed > SHORTUPDATE then
-		self.elapsed = 0;
-
-		-- Threat
-		plate:UpdateThreat()
-	-- Long Updates
-	elseif self.elapsedLong > LONGUPDATE then
-		self.elapsedLong = 0;
-		plate.canHaveThreat = CanHaveThreat(plate._Health:GetStatusBarColor())
-
-		plate:UpdateHealthColor()
-		plate:UpdateName()
-		Healthbar_OnValueChanged(plate)
+		NamePlatePlayerResourceFrame:SetShown(namePlatePlayer ~= nil);
 	end
 end
 
------------------------------------------------------------------------------------
--- Nameplate Init
------------------------------------------------------------------------------------
+-------------------------
+--	Class Mana Bar
+-------------------------
 
-local function InitNameplate(self)
-	-- Main frame
-	local BarFrame, Nameframe = self:GetChildren()
-	local Health, Absorb, Castbar = BarFrame:GetChildren()
-	local Name = Nameframe:GetRegions()
-	local Threat, Border, Highlight, Level, Boss, Raid, Dragon = BarFrame:GetRegions()
-	local cTexture, cBorder, cShield, cIcon, cName, cNameshadow = Castbar:GetRegions()
-	local IconLayer, IconSublevel = cIcon:GetDrawLayer()
+local manabar = ClassNameplateManaBarFrame
+manabar:SetStatusBarTexture(config.StatusbarTexture, 'BACKGROUND', 1)
+manabar:SetBackdrop(Backdrop)
+manabar:SetBackdropColor(0, 0, 0, .8)
+manabar.Border:Hide()
 
-	-- Setup the plate
-	local plate = self.plate
-	plate:SetSize(WIDTH, TOTALHEIGHT)
-	plate:SetFrameLevel(0)
-	plate:SetFrameStrata("BACKGROUND")
+manabar.FeedbackFrame.BarTexture:SetTexture(config.StatusbarTexture)
 
-	-- Stuff we will use, _ means used but not shown.
-	plate._Frame = BarFrame
-	plate._Health = Health
-	plate._Highlight = Highlight
-	plate._Threat = Threat
-	plate.Castbar = Castbar
-	plate.Castbar.Texture = cTexture
-	plate.Castbar.Border = cBorder
-	plate.Castbar.Name = cName
-	plate.Castbar.Icon = cIcon
-	plate.Castbar.Shield = cShield
-	plate.Raid = Raid
-	plate._Boss = Boss
-	plate._Dragon = Dragon
-	plate._Level = Level
-	plate._Name = Name
+manabar.border = manabar:CreateTexture(nil, 'ARTWORK', nil, 2)
+manabar.border:SetTexture(BorderTex)
+manabar.border:SetTexCoord(unpack(TexCoord))
+manabar.border:SetPoint('TOPLEFT', manabar, -4, 6)
+manabar.border:SetPoint('BOTTOMRIGHT', manabar, 4, -6)
+manabar.border:SetVertexColor(unpack(config.Colors.Frame))
 
-	-- functions
-	plate.UpdateName = UpdateName
-	plate.UpdateHealthColor = UpdateHealthColor
-	plate.ShowTotemIcon = ShowTotemIcon
-	plate.UpdateThreat = UpdateThreat
-	plate.SetGuid = SetGuid
-	plate.ClearGuid = ClearGuid
+function ClassNameplateManaBarFrame:OnOptionsUpdated()
+	local width, height = C_NamePlate.GetNamePlateSelfSize();
+	self:SetHeight(config.playerConfig.healthBarHeight);
+end
 
-	-- Hiding:
-	HideIt(Level)
-	HideIt(Nameframe)
-	HideIt(Health)
-	--Health:SetStatusBarTexture(nil)
-	Border:SetTexture(nil)
-	--cNameshadow:SetTexture(nil)
-	Boss:SetTexture(nil)
-	Dragon:SetTexture(nil)
-	Threat:SetTexture(nil)
+function DriverFrame:UpdateManaBar()
+	manabar:Hide()
 
+	local showSelf = GetCVar("nameplateShowSelf");
+	if ( showSelf == "0" ) then
+		return;
+	end
+
+	local namePlatePlayer = C_NamePlate.GetNamePlateForUnit("player");
+	if ( namePlatePlayer ) then
+		manabar:SetParent(namePlatePlayer);
+		manabar:ClearAllPoints();
+		manabar:SetPoint("TOPLEFT", namePlatePlayer.UnitFrame.healthBar, "BOTTOMLEFT", 0, -6);
+		manabar:SetPoint("TOPRIGHT", namePlatePlayer.UnitFrame.healthBar, "BOTTOMRIGHT", 0, -6);
+		manabar:Show();
+	end
+end
+
+------------------------
+--	Nameplate
+------------------------
+
+function UnitFrameMixin:Create(unitframe)
 	-- Healthbar
-	plate.Health = CreateFrame("Statusbar", nil, plate)
-    plate.Health:SetStatusBarTexture(cfg.StatusbarTexture, "BACKGROUND", 1)
-    plate._Health:HookScript("OnValueChanged", function() Healthbar_OnValueChanged(plate) end)
+	local h = CreateFrame('Statusbar', '$parentHealthBar', unitframe)
+	self.healthBar = h
+	h:SetFrameLevel(90)
+    h:SetStatusBarTexture(config.StatusbarTexture, 'BACKGROUND', 1)
+	h:SetBackdrop(Backdrop)
+	h:SetBackdropColor(0, 0, 0, .8)
 
-	plate.Health:SetBackdrop(Backdrop)
-	plate.Health:SetBackdropColor(0, 0, 0, .5)
-	-- 		Border
-	plate.Border = plate.Health:CreateTexture(nil, "BACKGROUND", nil, 3)
-	plate.Border:SetTexture(BorderTex)
-	plate.Border:SetTexCoord(unpack(TexCoord))
-	plate.Border:SetPoint('TOPLEFT', plate.Health, -4, 6)
-	plate.Border:SetPoint('BOTTOMRIGHT', plate.Health, 4, -6)
-	plate.Border:SetVertexColor(unpack(cfg.Colors.Frame))
+	-- 	Healthbar textures --blizzard capital letters policy
+	self.myHealPrediction = h:CreateTexture(nil, 'BORDER', nil, 5)
+	self.myHealPrediction:SetVertexColor(0.0, 0.659, 0.608)
+	self.myHealPrediction:SetTexture[[Interface/TargetingFrame/UI-TargetingFrame-BarFill]]
 
-	-- Highlight
-	plate.Highlight = plate.Health:CreateTexture(nil, "BACKGROUND", nil, 2)
-	plate.Highlight:SetTexture(HighlightTex)
-	plate.Highlight:SetAllPoints(plate.Health)
-	plate.Highlight:SetVertexColor(1, 1, 1)
-	plate.Highlight:SetBlendMode("ADD")
-	plate.Highlight:SetTexCoord(unpack(HiTexCoord))
-	plate.Highlight:Hide()
+	self.otherHealPrediction = h:CreateTexture(nil, 'ARTWORK', nil, 5)
+	self.otherHealPrediction:SetVertexColor(0.0, 0.659, 0.608)
+	self.otherHealPrediction:SetTexture[[Interface/TargetingFrame/UI-TargetingFrame-BarFill]]
 
-	-- Threat
-	plate.Threat = plate.Health:CreateTexture(nil, "BACKGROUND", 4)
-	plate.Threat:SetTexture(BorderTexGlow)
-	plate.Threat:SetTexCoord(unpack(GlowTexCoord))
-	plate.Threat:SetPoint('TOPLEFT', plate.Border, -7, 15)
-	plate.Threat:SetPoint('BOTTOMRIGHT', plate.Border, 7, -15)
-	plate.Threat:SetVertexColor(unpack(ThreatColors[2]))
-	plate.Threat:SetAlpha(.7)
-	plate.Threat:Hide()
+	self.totalAbsorb = h:CreateTexture(nil, 'ARTWORK', nil, 5)
+	self.totalAbsorb:SetTexture[[Interface\RaidFrame\Shield-Fill]]
+	--
+	self.totalAbsorbOverlay = h:CreateTexture(nil, 'BORDER', nil, 6)
+	self.totalAbsorbOverlay:SetTexture([[Interface\RaidFrame\Shield-Overlay]], true, true);	--Tile both vertically and horizontally
+	self.totalAbsorbOverlay:SetAllPoints(self.totalAbsorb);
+	self.totalAbsorbOverlay.tileSize = 20;
+	--
+	self.myHealAbsorb = h:CreateTexture(nil, 'ARTWORK', nil, 1)
+	self.myHealAbsorb:SetTexture([[Interface\RaidFrame\Absorb-Fill]], true, true)
 
-	-- Target Marker
-	plate.Glow = plate.Health:CreateTexture(nil, "BORDER")
-	plate.Glow:SetTexture(MarkTex)
-	plate.Glow:SetTexCoord(unpack(TexCoord))
-	plate.Glow:SetAllPoints(plate.Border)
-	plate.Glow:SetBlendMode("ADD")
-	plate.Glow:SetVertexColor(.8, .8, 1, .5)
-	plate.Glow:Hide()
+	self.myHealAbsorbLeftShadow = h:CreateTexture(nil, 'ARTWORK', nil, 1)
+	self.myHealAbsorbLeftShadow:SetTexture[[Interface\RaidFrame\Absorb-Edge]]
+
+	self.myHealAbsorbRightShadow = h:CreateTexture(nil, 'ARTWORK', nil, 1)
+	self.myHealAbsorbRightShadow:SetTexture[[Interface\RaidFrame\Absorb-Edge]]
+	self.myHealAbsorbRightShadow:SetTexCoord(1, 0, 0, 1)
+	--
+	h.border = h:CreateTexture(nil, 'ARTWORK', nil, 2)
+	h.border:SetTexture(BorderTex)
+	h.border:SetTexCoord(unpack(TexCoord))
+	h.border:SetPoint('TOPLEFT', h, -4, 6)
+	h.border:SetPoint('BOTTOMRIGHT', h, 4, -6)
+	h.border:SetVertexColor(unpack(config.Colors.Frame))
+	--
+	self.overAbsorbGlow = h:CreateTexture(nil, 'ARTWORK', nil, 3)
+	self.overAbsorbGlow:SetTexture[[Interface\RaidFrame\Shield-Overshield]]
+	self.overAbsorbGlow:SetBlendMode'ADD'
+	self.overAbsorbGlow:SetPoint('BOTTOMLEFT', h, 'BOTTOMRIGHT', -4, -1)
+	self.overAbsorbGlow:SetPoint('TOPLEFT', h, 'TOPRIGHT', -4, 1)
+	self.overAbsorbGlow:SetWidth(8);
+
+	self.overHealAbsorbGlow = h:CreateTexture(nil, 'ARTWORK', nil, 3)
+	self.overHealAbsorbGlow:SetTexture[[Interface\RaidFrame\Absorb-Overabsorb]]
+	self.overHealAbsorbGlow:SetBlendMode'ADD'
+	self.overHealAbsorbGlow:SetPoint('BOTTOMRIGHT', h, 'BOTTOMLEFT', 2, -1)
+	self.overHealAbsorbGlow:SetPoint('TOPRIGHT', h, 'TOPLEFT', 2, 1)
+	self.overHealAbsorbGlow:SetWidth(8);
 
 	-- Castbar
-	plate.Castbar:SetParent(plate)
-	plate.Castbar:SetStatusBarTexture(cfg.StatusbarTexture)
-	plate.Castbar:SetFrameLevel(plate.Castbar:GetFrameLevel())
-	plate.Castbar:SetBackdrop(Backdrop)
-	plate.Castbar:SetBackdropColor(0, 0, 0, .5)
-	plate.Castbar:ClearAllPoints() -- We set points in onshow
-	plate.Castbar.Texture:SetDrawLayer("BACKGROUND", 1)
-	--		Border
-	plate.Castbar.Border:SetTexCoord(unpack(CbTexCoord))
-    plate.Castbar.Border:SetDrawLayer('BACKGROUND', 2)
-	plate.Castbar.Border:SetTexture(BorderTex)
-	plate.Castbar.Border:ClearAllPoints()
-	plate.Castbar.Border:SetPoint('TOPLEFT', plate.Castbar, -4, 6)
-	plate.Castbar.Border:SetPoint('BOTTOMRIGHT', plate.Castbar, 4, -6)
-	plate.Castbar.Border:SetVertexColor(unpack(cfg.Colors.Frame))
-	plate.Castbar.Border:Show()
-	--		Shield
-	plate.Castbar.Shield:SetParent(plate.Castbar)
-	plate.Castbar.Shield:SetTexture(MarkTex)
-	plate.Castbar.Shield:SetTexCoord(unpack(CbTexCoord))
-	plate.Castbar.Shield:SetAllPoints(plate.Castbar.Border)
-	plate.Castbar.Shield:SetBlendMode("ADD")
-	plate.Castbar.Shield:SetVertexColor(1, .9, 0)
-	-- 		Name
-	plate.Castbar.Name:ClearAllPoints()
-	plate.Castbar.Name:SetPoint("BOTTOM", plate.Castbar, 0, -5)
-	plate.Castbar.Name:SetPoint("LEFT", plate.Castbar, 5, 0)
-	plate.Castbar.Name:SetPoint("RIGHT", plate.Castbar, -5, 0)
-	plate.Castbar.Name:SetFont(cfg.Font, cfg.FontSize, "THINOUTLINE")
-	plate.Castbar.Name:SetShadowColor(0, 0, 0, 0)
-	--		Icon
-	plate.Castbar.Icon:SetTexCoord(.1, .9, .1, .9)
-	plate.Castbar.Icon:SetSize(25, 25)
-	plate.Castbar.Icon:SetParent(plate.Castbar)
-	plate.Castbar.Icon:ClearAllPoints()
-	plate.Castbar.Icon:SetPoint("TOPRIGHT", plate, "TOPLEFT", -GAP, 0)
-	plate.Castbar.IconBorder = plate.Castbar:CreateTexture(nil, IconLayer, nil, IconSublevel+1)
-	plate.Castbar.IconBorder:SetTexture(cfg.IconTextures.White)
-	plate.Castbar.IconBorder:SetPoint("TOPRIGHT", plate.Castbar.Icon, 2, 2)
-	plate.Castbar.IconBorder:SetPoint("BOTTOMLEFT", plate.Castbar.Icon, -2, -2)
+	local c = CreateFrame('StatusBar', '$parentCastBar', nameplate)
+	do
+		self.castBar = c
+		c:SetFrameLevel(100)
+		c:Hide()
+		c:SetStatusBarTexture(config.StatusbarTexture, 'BACKGROUND', 1)
+		c:SetBackdrop(Backdrop)
+		c:SetBackdropColor(0, 0, 0, .5)
 
-	-- Name
-	plate.Name = plate.Health:CreateFontString(nil, "BORDER", 5)
-	plate.Name:SetPoint("BOTTOM", plate, "TOP", 0, 4)
-	plate.Name:SetPoint("LEFT", plate, -5, 0)
-	plate.Name:SetPoint("RIGHT", plate, 5, 0)
-	plate.Name:SetFont(cfg.Font, cfg.FontSize, "THINOUTLINE")
+		--		Castbar textures
+		c.border = c:CreateTexture(nil, 'ARTWORK', nil, 0)
+		c.border:SetTexCoord(unpack(CbTexCoord))
+		c.border:SetTexture(BorderTex)
+		c.border:SetPoint('TOPLEFT', c, -4, 6)
+		c.border:SetPoint('BOTTOMRIGHT', c, 4, -6)
+		c.border:SetVertexColor(unpack(config.Colors.Frame))
 
-	-- RaidIcon
-	plate.Raid:SetParent(plate)
-	plate.Raid:ClearAllPoints()
-	plate.Raid:SetSize(cfg.RaidIconSize, cfg.RaidIconSize)
-	plate.Raid:SetPoint("BOTTOM", plate.Name, "TOP", 0, 0)
+		c.BorderShield = c:CreateTexture(nil, 'ARTWORK', nil, 1)
+		c.BorderShield:SetTexture(MarkTex)
+		c.BorderShield:SetTexCoord(unpack(CbTexCoord))
+		c.BorderShield:SetAllPoints(c.border)
+		c.BorderShield:SetBlendMode'ADD'
+		c.BorderShield:SetVertexColor(1, .9, 0, 0.7)
+		CastingBarFrame_AddWidgetForFade(c, c.BorderShield)
 
-	plate.lastAlpha = 0; -- Need this here, frame outside screen calls onshow again. For fading
+		c.Text = c:CreateFontString(nil, 'OVERLAY', nil, 1)
+		c.Text:SetPoint('CENTER', c, 0, 0)
+		c.Text:SetPoint('LEFT', c, 0, 0)
+		c.Text:SetPoint('RIGHT', c, 0, 0)
+		c.Text:SetFont(config.Font, config.FontSize, 'THINOUTLINE')
+		c.Text:SetShadowColor(0, 0, 0, 0)
 
-	self:HookScript("OnShow", Nameplate_OnShow)
-	self:HookScript("OnHide", Nameplate_OnHide)
-	if self:IsShown() then
-		Nameplate_OnShow(self)
-	else
-		plate:Hide()
+		c.Icon = c:CreateTexture(nil, 'OVERLAY', nil, 1)
+		c.Icon:SetTexCoord(.1, .9, .1, .9)
+		c.Icon:SetPoint('BOTTOMRIGHT', c, 'BOTTOMLEFT', -7, 0)
+		c.Icon:SetPoint('TOPRIGHT', h, 'TOPLEFT', -7, 0)
+		CastingBarFrame_AddWidgetForFade(c, c.Icon)
+
+		c.IconBorder = c:CreateTexture(nil, 'OVERLAY', nil, 2)
+		c.IconBorder:SetTexture(config.IconTextures.Normal)
+		c.IconBorder:SetVertexColor(unpack(config.Colors.Border))
+		c.IconBorder:SetPoint('TOPRIGHT', c.Icon, 2, 2)
+		c.IconBorder:SetPoint('BOTTOMLEFT', c.Icon, -2, -2)
+		CastingBarFrame_AddWidgetForFade(c, c.IconBorder)
+
+		c.Spark = c:CreateTexture(nil, 'OVERLAY', nil, 2)
+		c.Spark:SetTexture[[Interface\CastingBar\UI-CastingBar-Spark]]
+		c.Spark:SetBlendMode'ADD'
+		c.Spark:SetSize(16,16)
+		c.Spark:SetPoint('CENTER', c, 0, 0)
+
+		c.Flash = c:CreateTexture(nil, 'OVERLAY', nil, 2)
+		c.Flash:SetTexture(config.StatusbarTexture)
+		c.Flash:SetBlendMode'ADD'
+
+		c:SetScript('OnEvent', CastingBarFrame_OnEvent)
+		c:SetScript('OnUpdate',CastingBarFrame_OnUpdate)
+		c:SetScript('OnShow', CastingBarFrame_OnShow)
+		CastingBarFrame_OnLoad(c, nil, false, true);
+		--CastingBarFrame_SetNonInterruptibleCastColor(c, 0.7, 0.7, 0.7)
 	end
 
-	ns.CreateAuraFrame(self)
-	ns.CreateQuestStuff(self)
+	-- Misc
+	self.classificationIndicator = h:CreateTexture(nil, 'OVERLAY', nil)
+	self.classificationIndicator:SetSize(14,13)
+	self.classificationIndicator:SetPoint('RIGHT', h, 'LEFT', 0, 0)
 
-	plate.Castbar:HookScript('OnShow', NameplateCastbar_OnShow)
-	plate.Castbar:HookScript("OnValueChanged", NameplateCastbar_OnValueChanged)
-	self:HookScript("OnUpdate", Nameplate_OnUpdate)
+	self.raidTargetIcon = h:CreateTexture(nil, 'OVERLAY', nil)
+	self.raidTargetIcon:SetSize(18,18)
+	self.raidTargetIcon:SetPoint('LEFT', h, 'RIGHT', 4, 1)
+	self.raidTargetIcon:SetTexture[[Interface\TargetingFrame\UI-RaidTargetingIcons]]
+
+	self.name = h:CreateFontString(nil, 'ARTWORK', 5)
+	self.name:SetPoint('BOTTOM', h, 'TOP', 0, 4)
+	self.name:SetWordWrap(false)
+	self.name:SetJustifyH'CENTER'
+	self.name:SetFont(config.Font, config.FontSize, 'THINOUTLINE')
+
+	self.aggroHighlight = h:CreateTexture(nil, 'BORDER', nil, 4)
+	self.aggroHighlight:SetTexture(BorderTexGlow)
+	self.aggroHighlight:SetTexCoord(unpack(GlowTexCoord))
+	self.aggroHighlight:SetPoint('TOPLEFT', h.border, -7, 15)
+	self.aggroHighlight:SetPoint('BOTTOMRIGHT', h.border, 7, -15)
+	self.aggroHighlight:SetAlpha(.7)
+	self.aggroHighlight:Hide()
+
+	self.hoverHighlight = h:CreateTexture(nil, 'ARTWORK', nil, 1)
+	self.hoverHighlight:SetTexture(HighlightTex)
+	self.hoverHighlight:SetAllPoints(h)
+	self.hoverHighlight:SetVertexColor(1, 1, 1)
+	self.hoverHighlight:SetBlendMode('ADD')
+	self.hoverHighlight:SetTexCoord(unpack(HiTexCoord))
+	self.hoverHighlight:Hide()
+
+	self.selectionHighlight = h:CreateTexture(nil, 'ARTWORK', nil, 4)
+	self.selectionHighlight:SetTexture(MarkTex)
+	self.selectionHighlight:SetTexCoord(unpack(TexCoord))
+	self.selectionHighlight:SetAllPoints(h.border)
+	self.selectionHighlight:SetBlendMode('ADD')
+	self.selectionHighlight:SetVertexColor(.8, .8, 1, .7)
+	self.selectionHighlight:Hide()
+
+	self.BuffFrame = CreateFrame('StatusBar', '$parentBuffFrame', self, 'HorizontalLayoutFrame')
+	Mixin(self.BuffFrame, NameplateBuffContainerMixin)
+	self.BuffFrame:SetPoint('LEFT', self.healthBar, -1, 0)
+	self.BuffFrame.spacing = 4
+	self.BuffFrame.fixedHeight = 14
+	self.BuffFrame:SetScript('OnEvent', self.BuffFrame.OnEvent)
+	self.BuffFrame:SetScript('OnUpdate', self.BuffFrame.OnUpdate)
+	self.BuffFrame:OnLoad()
+
+	-- Quest
+	self.questIcon = self:CreateTexture(nil, nil, nil, 0)
+	self.questIcon:SetSize(28, 22)
+	self.questIcon:SetTexture('Interface/QuestFrame/AutoQuest-Parts')
+	self.questIcon:SetTexCoord(0.30273438, 0.41992188, 0.015625, 0.953125)
+	self.questIcon:SetPoint('LEFT', h, 'RIGHT', 4, 0)
+
+	self.questText = self:CreateFontString(nil, nil, "SystemFont_Outline_Small")
+	self.questText:SetPoint('CENTER', self.questIcon, 1, 1)
+	self.questText:SetShadowOffset(1, -1)
+	self.questText:SetTextColor(1,.82,0)
 end
 
-local numNamePlates
-WorldFrame:HookScript("OnUpdate", function(self, elap)
-	local numChildren = self:GetNumChildren()
-	if numChildren == numNamePlates then return; end
+function UnitFrameMixin:ApplyFrameOptions(namePlateUnitToken)
+	if UnitIsUnit('player', namePlateUnitToken) then
+		self.optionTable = config.playerConfig
+		self.healthBar:SetPoint('LEFT', self, 'LEFT', 12, 5);
+		self.healthBar:SetPoint('RIGHT', self, 'RIGHT', -12, 5);
+		self.healthBar:SetHeight(self.optionTable.healthBarHeight);
 
-	for _, obj in pairs({self:GetChildren()}) do
-		if (not obj.plate) then
-			local name = obj:GetName()
-			if name and name:find("NamePlate") then
-				
-				local plate = CreateFrame("Frame", nil, WorldFrame)
+	else
 
-				local mover = CreateFrame("Frame", nil, plate)
-				mover:SetPoint('BOTTOMLEFT', WorldFrame)
-				mover:SetPoint('TOPRIGHT', obj, 'CENTER')
-				mover:SetScript("OnSizeChanged", function(self, width, height)
-					plate:Hide()
-					plate:SetPoint("CENTER", WorldFrame, "BOTTOMLEFT", width, height)
-					plate:Show()
-				end)
+		if UnitIsFriend('player', namePlateUnitToken) then
+			self.optionTable = config.friendlyConfig
+		else
+			self.optionTable = config.enemyConfig
+		end
 
-				obj.plate = plate
-				InitNameplate(obj)
-			end
+		self.castBar:SetPoint('BOTTOMLEFT', self, 'BOTTOMLEFT', 12, 6);
+		self.castBar:SetPoint('BOTTOMRIGHT', self, 'BOTTOMRIGHT', -12, 6);
+		self.castBar:SetHeight(self.optionTable.castBarHeight);
+		self.castBar.Icon:SetWidth(self.optionTable.castBarHeight + self.optionTable.healthBarHeight + 6)
+	
+		self.healthBar:SetPoint('BOTTOMLEFT', self.castBar, 'TOPLEFT', 0, 6);
+		self.healthBar:SetPoint('BOTTOMRIGHT', self.castBar, 'TOPRIGHT', 0, 6);
+		self.healthBar:SetHeight(self.optionTable.healthBarHeight);
+	end
+end
+
+function UnitFrameMixin:OnAdded(namePlateUnitToken)
+	self.unit = namePlateUnitToken
+	self.displayedUnit = namePlateUnitToken
+	self.inVehicle = false;
+	
+	if namePlateUnitToken then 
+		self:RegisterEvents()
+	else
+		self:UnregisterEvents()
+	end
+
+	if self.castBar then
+		if namePlateUnitToken and (not self.optionTable.hideCastbar) then
+			CastingBarFrame_SetUnit(self.castBar, namePlateUnitToken, false, true);
+		else
+			CastingBarFrame_SetUnit(self.castBar, nil, nil, nil);
 		end
 	end
-end)
+end
+
+function UnitFrameMixin:RegisterEvents()
+	self:RegisterEvent'UNIT_NAME_UPDATE'
+	self:RegisterEvent'PLAYER_TARGET_CHANGED'
+
+	self:RegisterEvent'UNIT_ENTERED_VEHICLE'
+	self:RegisterEvent'UNIT_EXITED_VEHICLE'
+	self:RegisterEvent'UNIT_PET'
+
+	self:UpdateUnitEvents();
+	self:SetScript('OnEvent', self.OnEvent);
+end
+
+function UnitFrameMixin:UpdateUnitEvents()
+	local unit = self.unit;
+	local displayedUnit;
+	if ( unit ~= self.displayedUnit ) then
+		displayedUnit = self.displayedUnit;
+	end
+	self:RegisterUnitEvent('UNIT_MAXHEALTH', unit, displayedUnit);
+	self:RegisterUnitEvent('UNIT_HEALTH', unit, displayedUnit);
+	self:RegisterUnitEvent('UNIT_HEALTH_FREQUENT', unit, displayedUnit);
+
+	self:RegisterUnitEvent('UNIT_AURA', unit, displayedUnit);
+	self:RegisterUnitEvent('UNIT_THREAT_SITUATION_UPDATE', unit, displayedUnit);
+	self:RegisterUnitEvent('UNIT_THREAT_LIST_UPDATE', unit, displayedUnit);
+	self:RegisterUnitEvent('UNIT_HEAL_PREDICTION', unit, displayedUnit);
+
+	self:RegisterUnitEvent('UNIT_ABSORB_AMOUNT_CHANGED', unit.displayedUnit);
+	self:RegisterUnitEvent('UNIT_HEAL_ABSORB_AMOUNT_CHANGED', unit.displayedUnit);
+end
+
+function UnitFrameMixin:UnregisterEvents()
+	self:SetScript('OnEvent', nil)
+end
+
+
+function UnitFrameMixin:UpdateAllElements()
+	self:UpdateInVehicle()
+
+	if UnitExists(self.displayedUnit) then
+		CompactUnitFrame_UpdateSelectionHighlight(self)
+		CompactUnitFrame_UpdateMaxHealth(self) 
+		CompactUnitFrame_UpdateHealth(self)
+		CompactUnitFrame_UpdateHealPrediction(self)
+		CompactUnitFrame_UpdateClassificationIndicator(self)
+		self:UpdateRaidTarget()
+		CompactUnitFrame_UpdateHealthColor(self)
+		CompactUnitFrame_UpdateName(self);
+		self:UpdateThreat()
+		self:OnUnitAuraUpdate()
+		self:UpdateQuestVisuals()
+	end
+end
+
+function UnitFrameMixin:OnEvent(event, ...)
+	local arg1, arg2, arg3, arg4 = ...
+	if ( event == 'PLAYER_TARGET_CHANGED' ) then
+		CompactUnitFrame_UpdateSelectionHighlight(self);
+		CompactUnitFrame_UpdateName(self);
+	elseif ( arg1 == self.unit or arg1 == self.displayedUnit ) then
+		if ( event == 'UNIT_MAXHEALTH' ) then
+			CompactUnitFrame_UpdateMaxHealth(self)
+			CompactUnitFrame_UpdateHealth(self)
+			CompactUnitFrame_UpdateHealPrediction(self)
+		elseif ( event == 'UNIT_HEALTH' or event == 'UNIT_HEALTH_FREQUENT' ) then
+			CompactUnitFrame_UpdateHealth(self)
+			CompactUnitFrame_UpdateHealPrediction(self)
+		elseif ( event == 'UNIT_NAME_UPDATE' ) then
+			CompactUnitFrame_UpdateName(self)
+			CompactUnitFrame_UpdateHealthColor(self)
+		elseif ( event == 'UNIT_AURA' ) then
+			self:OnUnitAuraUpdate()
+		elseif ( event == 'UNIT_THREAT_SITUATION_UPDATE' ) then
+			self:UpdateThreat()
+			--CompactUnitFrame_UpdateHealthBorder(self)
+		elseif ( event == 'UNIT_THREAT_LIST_UPDATE' ) then
+			if ( self.optionTable.considerSelectionInCombatAsHostile ) then
+				CompactUnitFrame_UpdateHealthColor(self)
+				CompactUnitFrame_UpdateName(self)
+			end
+			self:UpdateThreat()
+		elseif ( event == 'UNIT_HEAL_PREDICTION' or event == 'UNIT_ABSORB_AMOUNT_CHANGED' or event == 'UNIT_HEAL_ABSORB_AMOUNT_CHANGED' ) then
+			CompactUnitFrame_UpdateHealPrediction(self)
+		elseif ( event == 'UNIT_ENTERED_VEHICLE' or event == 'UNIT_EXITED_VEHICLE' or event == 'UNIT_PET' ) then
+			self:UpdateAllElements()
+		end
+	end
+end
+
+function UnitFrameMixin:UpdateInVehicle()
+	if ( UnitHasVehicleUI(self.unit) ) then
+		if ( not self.inVehicle ) then
+			self.inVehicle = true
+			local prefix, id, suffix = string.match(self.unit, '([^%d]+)([%d]*)(.*)')
+			self.displayedUnit = prefix..'pet'..id..suffix
+			self:UpdateUnitEvents()
+		end
+	else
+		if ( self.inVehicle ) then
+			self.inVehicle = false
+			self.displayedUnit = self.unit
+			self:UpdateUnitEvents()
+		end
+	end
+end
+
+function UnitFrameMixin:UpdateRaidTarget()
+	local icon = self.raidTargetIcon;
+	local index = GetRaidTargetIndex(self.unit)
+	if ( index ) then
+		SetRaidTargetIconTexture(icon, index);
+		icon:Show();
+		if self.optionTable.colorHealthByRaidIcon then
+			self.optionTable.healthBarColorOverride = raidIconColor[index]
+		end
+	else
+		self.optionTable.healthBarColorOverride = nil
+		icon:Hide();
+	end
+end
+
+function UnitFrameMixin:UpdateThreat()
+	local tex = self.aggroHighlight
+	if not self.optionTable.tankBorderColor then
+		tex:Hide() 
+		return
+	end
+
+	local isTanking, status = UnitDetailedThreatSituation('player', self.displayedUnit)
+	if status ~= nil then
+		if ns.IsPlayerEffectivelyTank() then
+			status = math.abs(status - 3)
+		end
+		if status > 0 then
+			tex:SetVertexColor(GetThreatStatusColor(status))
+			if not tex:IsShown() then 
+				tex:Show()
+			end
+			return
+		end
+	end
+	tex:Hide() 
+end
+
+function UnitFrameMixin:UpdateQuestVisuals()
+	local isQuest, numLeft = ns.GetUnitQuestInfo(self.displayedUnit)
+	if (isQuest) then
+		if (numLeft > 0) then
+			self.questText:SetText(numLeft)
+		else
+			self.questText:SetText('?')
+		end
+		self.questIcon:Show()
+	else
+		self.questText:SetText(nil)
+		self.questIcon:Hide()
+	end
+end
+
+function UnitFrameMixin:OnUnitAuraUpdate()
+	self.BuffFrame:UpdateBuffs(self.displayedUnit, self.optionTable.filter)
+end
+

@@ -2,10 +2,5 @@
 ## Title: |cffffffffAbu|rNameplates
 ## Author: Abu
 
-libs\AbuTheLib.lua
-
-defaults.lua
-CONFIG.lua
-
-cure.lua
-modules.lua
+utils.lua
+core.lua
