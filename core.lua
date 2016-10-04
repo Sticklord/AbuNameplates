@@ -24,59 +24,73 @@ local config = {
 	FontSize = 12,
 
 	friendlyConfig = {
-		useClassColors = false,
-		displaySelectionHighlight = true,
-		colorHealthBySelection = true,
-		considerSelectionInCombatAsHostile = true,
-		displayNameByPlayerNameRules = true,
-		colorHealthByRaidIcon = true,
-		displayName = true,
-		filter = "NONE",
+		useClassColors = true,						-- Class colored bar
+		colorHealthBySelection = true,				-- npc healthbar coloring by type (neutral, hostile...)
+		colorHealthByRaidIcon = true,				-- Blue bar if its marked with square for example
+		colorHealthWithExtendedColors = true, 		-- Not entirely sure what this does
+
+		displayName = true,							-- display name
+		displayNameByPlayerNameRules = true,		-- Use the UnitShouldDisplayName() to display name
+		colorNameByClass = false,
+		colorNameBySelection = false,				-- Color name by selection color(hostile friend neutral)
+		colorNameWithExtendedColors = false, 		-- Again, not entirely sure what this does
+
+		considerSelectionInCombatAsHostile = true,  -- Red for enemies you are in combat with
+		displayAggroHighlight = false,
+		displaySelectionHighlight = true,			-- Stronger border around your target
+
+		filter = "NONE", -- The aura filter on the plate
 
 		castBarHeight = 8,
-		healthBarHeight = 4*2,
+		healthBarHeight = 8,
 
-		displayAggroHighlight = false,
-		displaySelectionHighlight = true,
+		displayHealPrediction = true,				-- Absorb, incoming heals etc..
+		displayNameWhenSelected = true,				-- Only show name when selected
+		displayQuest = true,						-- Show quest icon 
+
+		greyOutWhenTapDenied = false,				-- Grey if tapped
+		showClassificationIndicator = true,  		-- Elite border
+		tankBorderColor = false,
+		--displayDispelDebuffs = true,
+		--smoothHealthUpdates = false,
 		--fadeOutOfRange = false,
 		--displayStatusText = true,
-		displayHealPrediction = true,
-		--displayDispelDebuffs = true,
-		colorNameBySelection = true,
-		colorNameWithExtendedColors = true,
-		colorHealthWithExtendedColors = true,
-		colorHealthBySelection = true,
-		considerSelectionInCombatAsHostile = true,
-		--smoothHealthUpdates = false,
-		displayNameWhenSelected = true,
-		displayNameByPlayerNameRules = true,
+		--playLoseAggroHighlight = true,
 	},
 
 	enemyConfig = {
-		useClassColors = true,
-		displayAggroHighlight = true,
-		--playLoseAggroHighlight = true,
-		displaySelectionHighlight = true,
+		useClassColors = true,						-- Class colored bar
 		colorHealthBySelection = true,
-		considerSelectionInCombatAsHostile = true,
-		displayNameByPlayerNameRules = true,
 		colorHealthByRaidIcon = true,
+		colorHealthWithExtendedColors = false, 		-- Not entirely sure what this does
 
 		displayName = true,
-		tankBorderColor = true,
+		displayNameByPlayerNameRules = true,
+		colorNameByClass = false,
+		colorNameBySelection = true,
+		colorNameWithExtendedColors = true, 		-- Again, not sure what this does
 
-		castBarHeight = 8,
-		healthBarHeight = 4*2,
+		considerSelectionInCombatAsHostile = true,
+		displayAggroHighlight = true,
+		displaySelectionHighlight = true,			-- Stronger border around your target
+
 		filter = "HARMFUL|INCLUDE_NAME_PLATE_ONLY",
 
-		displayName = true,
-		--fadeOutOfRange = false,
+		castBarHeight = 8,
+		healthBarHeight = 8,
+
 		displayHealPrediction = true,
-		colorNameBySelection = true,
-		--smoothHealthUpdates = false,
 		displayNameWhenSelected = true,
+		displayQuest = true,
+
 		greyOutWhenTapDenied = true,
-		showClassificationIndicator = true,
+		showClassificationIndicator = true, -- Elite border
+		tankBorderColor = true,
+		--displayDispelDebuffs = true,
+		--smoothHealthUpdates = false,
+		--fadeOutOfRange = false,
+		--displayStatusText = true,
+		--playLoseAggroHighlight = true,
 	},
 
 	playerConfig = {
@@ -97,6 +111,7 @@ local config = {
 		hideCastbar = true,
 	},
 }
+
 ns.config = config
 ns.DriverFrame = DriverFrame
 ns.UnitFrameMixin = UnitFrameMixin
@@ -108,10 +123,8 @@ local HighlightTex = 'Interface\\AddOns\\AbuNameplates\\media\\Highlight.blp'
 
 local TexCoord 		= {24/256, 186/256, 35/128, 59/128}
 local CbTexCoord 	= {24/256, 186/256, 59/128, 35/128}
-
 local GlowTexCoord 	= {15/256, 195/256, 21/128, 73/128}
 local CbGlowTexCoord= {15/256, 195/256, 73/128, 21/128}
-
 local HiTexCoord 	= {5/128, 105/128, 20/32, 26/32}
 
 local raidIconColor = {
@@ -167,6 +180,10 @@ function DriverFrame:OnEvent(event, ...)
 		self:OnRaidTargetUpdate()
 	elseif event == 'QUEST_LOG_UPDATE' then
 		self:OnQuestLogUpdate()
+	elseif event == 'UNIT_AURA' then
+		local unit = ...
+		if strsub(unit, 1, 9) ~= 'nameplate' then return; end --dont update twice
+		self:OnUnitAuraUpdate(unit)
 	end
 end
 
@@ -178,7 +195,7 @@ function DriverFrame:DisableBlizzard()
 	NamePlateDriverFrame:UnregisterAllEvents()
 	NamePlateDriverFrame:Hide()
 
-	NamePlateDriverFrame.UpdateNamePlateOptions = function()
+	NamePlateDriverFrame.UpdateNamePlateOptions = function() -- blizzard option panel calls this
 		DriverFrame:UpdateNamePlateOptions()
 	end
 end
@@ -200,6 +217,8 @@ function DriverFrame:OnLoad()
 
 	self:RegisterEvent'RAID_TARGET_UPDATE'
 	self:RegisterEvent'QUEST_LOG_UPDATE'
+
+	self:RegisterEvent'UNIT_AURA'
 end
 
 function DriverFrame:UpdateNamePlateOptions()
@@ -239,6 +258,7 @@ function DriverFrame:OnNamePlateAdded(namePlateUnitToken)
 	nameplate.UnitFrame:UpdateAllElements()
 
 	self:UpdateClassResourceBar()
+	self:OnUnitAuraUpdate(namePlateUnitToken);
 	self:UpdateManaBar()
 end
 
@@ -250,11 +270,19 @@ end
 function DriverFrame:OnTargetChanged()
 	local nameplate = C_NamePlate.GetNamePlateForUnit'target'
 	if nameplate then
-		nameplate.UnitFrame:OnUnitAuraUpdate()
+		self:OnUnitAuraUpdate'target'
 	end
 
 	self:UpdateClassResourceBar()
 	self:UpdateManaBar()
+end
+
+function DriverFrame:OnUnitAuraUpdate(unit)
+	local nameplate = C_NamePlate.GetNamePlateForUnit(unit);
+	if (nameplate) then
+		--nameplate.UnitFrame.BuffFrame:UpdateBuffs(unit);
+		nameplate.UnitFrame.BuffFrame:UpdateBuffs(unit, nameplate.UnitFrame.optionTable.filter)
+	end
 end
 
 function DriverFrame:OnRaidTargetUpdate()
@@ -280,7 +308,7 @@ end
 
 local mouseoverframe -- if theres a better way im all ears
 function DriverFrame:OnUpdate(elapsed) 
-	local nameplate = C_NamePlate.GetNamePlateForUnit('mouseover')
+	local nameplate = C_NamePlate.GetNamePlateForUnit'mouseover'
 	if not nameplate or nameplate ~= mouseoverframe then
 		mouseoverframe.UnitFrame.hoverHighlight:Hide()
 		mouseoverframe = nil
@@ -289,7 +317,7 @@ function DriverFrame:OnUpdate(elapsed)
 end
 
 function DriverFrame:UpdateMouseOver()
-	local nameplate = C_NamePlate.GetNamePlateForUnit('mouseover')
+	local nameplate = C_NamePlate.GetNamePlateForUnit'mouseover'
 
 	if mouseoverframe == nameplate then
 		return
@@ -369,7 +397,6 @@ manabar.border:SetPoint('BOTTOMRIGHT', manabar, 4, -6)
 manabar.border:SetVertexColor(unpack(config.Colors.Frame))
 
 function ClassNameplateManaBarFrame:OnOptionsUpdated()
-	local width, height = C_NamePlate.GetNamePlateSelfSize();
 	self:SetHeight(config.playerConfig.healthBarHeight);
 end
 
@@ -394,58 +421,132 @@ end
 ------------------------
 --	Nameplate
 ------------------------
+local function UpdateBuffs(self, unit, filter) -- All this just so I can change the look
+	self.unit = unit;
+	self.filter = filter
+	self:UpdateAnchor();
+
+	if filter == "NONE" then
+		for i, buff in ipairs(self.buffList) do
+			buff:Hide();
+		end
+	else
+		-- Some buffs may be filtered out, use this to create the buff frames.
+		local buffIndex = 1;
+		for i = 1, BUFF_MAX_DISPLAY do
+			local name, rank, texture, count, debuffType, duration, expirationTime, caster, _, nameplateShowPersonal, spellId, _, _, _, nameplateShowAll = UnitAura(unit, i, filter);
+			if (self:ShouldShowBuff(name, caster, nameplateShowPersonal, nameplateShowAll, duration)) then
+				local buff = self.buffList[buffIndex]
+				if (not buff) then
+					buff = CreateFrame("Frame", self:GetParent():GetName() .. "Buff" .. buffIndex, self, "NameplateBuffButtonTemplate");
+					self.buffList[buffIndex] = buff
+					buff:SetSize(26,18)
+					buff.Icon:SetSize(24,16)
+					buff.Icon:SetDrawLayer('BACKGROUND', 0)
+
+					buff.Border:SetTexture(config.IconTextures.Normal)
+					buff.Border:SetDrawLayer('OVERLAY', 1)
+
+					buff.CountFrame.Count:SetFont(config.Font, config.FontSize, 'THINOUTLINE') -- Why does it have its own frame?
+
+					buff.Cooldown:SetHideCountdownNumbers(false)
+					buff.Cooldown:SetFrameLevel(buff:GetFrameLevel())
+
+					buff.Cooldown.Text = buff.Cooldown:GetRegions()
+					buff.Cooldown.Text:SetFont(config.Font, config.FontSize, 'THINOUTLINE')
+					buff.Cooldown.Text:SetPoint('CENTER', buff, 'CENTER', 0.5, 8)
+
+					buff:SetMouseClickEnabled(false);
+					buff.layoutIndex = buffIndex;
+				end
+				local buff = self.buffList[buffIndex];
+				buff:SetID(i);
+				buff.name = name;
+				buff.Icon:SetTexture(texture);
+				if (count > 1) then
+					buff.CountFrame.Count:SetText(count);
+					buff.CountFrame.Count:Show();
+				else
+					buff.CountFrame.Count:Hide();
+				end
+
+				CooldownFrame_Set(buff.Cooldown, expirationTime - duration, duration, duration > 0, true);
+
+				buff:Show();
+				buffIndex = buffIndex + 1;
+			else
+				if self.buffList[i] then
+					self.buffList[i]:Hide();
+				end
+			end
+		end
+	end
+	self:Layout();
+end
+
+local function shieldShow(self)
+	local border = self:GetParent().IconBorder
+	border:SetTexture(config.IconTextures.White)
+	border:SetVertexColor(unpack(config.Colors.Interrupt))
+end
+local function shieldHide(self)
+	local border = self:GetParent().IconBorder
+	border:SetTexture(config.IconTextures.Normal)
+	border:SetVertexColor(unpack(config.Colors.Border))
+end
 
 function UnitFrameMixin:Create(unitframe)
 	-- Healthbar
 	local h = CreateFrame('Statusbar', '$parentHealthBar', unitframe)
 	self.healthBar = h
 	h:SetFrameLevel(90)
-    h:SetStatusBarTexture(config.StatusbarTexture, 'BACKGROUND', 1)
+	h:SetStatusBarTexture(config.StatusbarTexture, 'BACKGROUND', 1)
 	h:SetBackdrop(Backdrop)
 	h:SetBackdropColor(0, 0, 0, .8)
 
 	-- 	Healthbar textures --blizzard capital letters policy
-	self.myHealPrediction = h:CreateTexture(nil, 'BORDER', nil, 5)
+	self.myHealPrediction = h:CreateTexture('$parentmyHealPrediction', 'BORDER', nil, 5)
 	self.myHealPrediction:SetVertexColor(0.0, 0.659, 0.608)
-	self.myHealPrediction:SetTexture[[Interface/TargetingFrame/UI-TargetingFrame-BarFill]]
+	self.myHealPrediction:SetTexture(config.StatusbarTexture)
 
-	self.otherHealPrediction = h:CreateTexture(nil, 'ARTWORK', nil, 5)
+	self.otherHealPrediction = h:CreateTexture('$parentotherHealPrediction', 'ARTWORK', nil, 5)
 	self.otherHealPrediction:SetVertexColor(0.0, 0.659, 0.608)
-	self.otherHealPrediction:SetTexture[[Interface/TargetingFrame/UI-TargetingFrame-BarFill]]
+	self.otherHealPrediction:SetTexture(config.StatusbarTexture)
 
-	self.totalAbsorb = h:CreateTexture(nil, 'ARTWORK', nil, 5)
+	self.totalAbsorb = h:CreateTexture('$parenttotalAbsorb', 'ARTWORK', nil, 5)
 	self.totalAbsorb:SetTexture[[Interface\RaidFrame\Shield-Fill]]
 	--
-	self.totalAbsorbOverlay = h:CreateTexture(nil, 'BORDER', nil, 6)
+	self.totalAbsorbOverlay = h:CreateTexture('$parenttotalAbsorbOverlay', 'BORDER', nil, 6)
 	self.totalAbsorbOverlay:SetTexture([[Interface\RaidFrame\Shield-Overlay]], true, true);	--Tile both vertically and horizontally
 	self.totalAbsorbOverlay:SetAllPoints(self.totalAbsorb);
 	self.totalAbsorbOverlay.tileSize = 20;
+	self.totalAbsorb.overlay = self.totalAbsorbOverlay -- for CompactUnitFrameUtil_UpdateFillBar
 	--
-	self.myHealAbsorb = h:CreateTexture(nil, 'ARTWORK', nil, 1)
+	self.myHealAbsorb = h:CreateTexture('$parentmyHealAbsorb', 'ARTWORK', nil, 1)
 	self.myHealAbsorb:SetTexture([[Interface\RaidFrame\Absorb-Fill]], true, true)
 
-	self.myHealAbsorbLeftShadow = h:CreateTexture(nil, 'ARTWORK', nil, 1)
+	self.myHealAbsorbLeftShadow = h:CreateTexture('$parentmyHealAbsorbLeftShadow', 'ARTWORK', nil, 1)
 	self.myHealAbsorbLeftShadow:SetTexture[[Interface\RaidFrame\Absorb-Edge]]
 
-	self.myHealAbsorbRightShadow = h:CreateTexture(nil, 'ARTWORK', nil, 1)
+	self.myHealAbsorbRightShadow = h:CreateTexture('$parentmyHealAbsorbRightShadow', 'ARTWORK', nil, 1)
 	self.myHealAbsorbRightShadow:SetTexture[[Interface\RaidFrame\Absorb-Edge]]
 	self.myHealAbsorbRightShadow:SetTexCoord(1, 0, 0, 1)
 	--
-	h.border = h:CreateTexture(nil, 'ARTWORK', nil, 2)
+	h.border = h:CreateTexture('$parentborder', 'ARTWORK', nil, 2)
 	h.border:SetTexture(BorderTex)
 	h.border:SetTexCoord(unpack(TexCoord))
 	h.border:SetPoint('TOPLEFT', h, -4, 6)
 	h.border:SetPoint('BOTTOMRIGHT', h, 4, -6)
 	h.border:SetVertexColor(unpack(config.Colors.Frame))
 	--
-	self.overAbsorbGlow = h:CreateTexture(nil, 'ARTWORK', nil, 3)
+	self.overAbsorbGlow = h:CreateTexture('$parentoverAbsorbGlow', 'ARTWORK', nil, 3)
 	self.overAbsorbGlow:SetTexture[[Interface\RaidFrame\Shield-Overshield]]
 	self.overAbsorbGlow:SetBlendMode'ADD'
 	self.overAbsorbGlow:SetPoint('BOTTOMLEFT', h, 'BOTTOMRIGHT', -4, -1)
 	self.overAbsorbGlow:SetPoint('TOPLEFT', h, 'TOPRIGHT', -4, 1)
 	self.overAbsorbGlow:SetWidth(8);
 
-	self.overHealAbsorbGlow = h:CreateTexture(nil, 'ARTWORK', nil, 3)
+	self.overHealAbsorbGlow = h:CreateTexture('$parentoverHealAbsorbGlow', 'ARTWORK', nil, 3)
 	self.overHealAbsorbGlow:SetTexture[[Interface\RaidFrame\Absorb-Overabsorb]]
 	self.overHealAbsorbGlow:SetBlendMode'ADD'
 	self.overHealAbsorbGlow:SetPoint('BOTTOMRIGHT', h, 'BOTTOMLEFT', 2, -1)
@@ -463,48 +564,50 @@ function UnitFrameMixin:Create(unitframe)
 		c:SetBackdropColor(0, 0, 0, .5)
 
 		--		Castbar textures
-		c.border = c:CreateTexture(nil, 'ARTWORK', nil, 0)
+		c.border = c:CreateTexture('$parentborder', 'ARTWORK', nil, 0)
 		c.border:SetTexCoord(unpack(CbTexCoord))
 		c.border:SetTexture(BorderTex)
 		c.border:SetPoint('TOPLEFT', c, -4, 6)
 		c.border:SetPoint('BOTTOMRIGHT', c, 4, -6)
 		c.border:SetVertexColor(unpack(config.Colors.Frame))
 
-		c.BorderShield = c:CreateTexture(nil, 'ARTWORK', nil, 1)
+		c.BorderShield = c:CreateTexture('$parentBorderShield', 'ARTWORK', nil, 1)
 		c.BorderShield:SetTexture(MarkTex)
 		c.BorderShield:SetTexCoord(unpack(CbTexCoord))
 		c.BorderShield:SetAllPoints(c.border)
 		c.BorderShield:SetBlendMode'ADD'
 		c.BorderShield:SetVertexColor(1, .9, 0, 0.7)
 		CastingBarFrame_AddWidgetForFade(c, c.BorderShield)
+		hooksecurefunc(c.BorderShield, 'Show', shieldShow)
+		hooksecurefunc(c.BorderShield, 'Hide', shieldHide)
 
-		c.Text = c:CreateFontString(nil, 'OVERLAY', nil, 1)
+		c.Text = c:CreateFontString('$parentText', 'OVERLAY', nil, 1)
 		c.Text:SetPoint('CENTER', c, 0, 0)
 		c.Text:SetPoint('LEFT', c, 0, 0)
 		c.Text:SetPoint('RIGHT', c, 0, 0)
 		c.Text:SetFont(config.Font, config.FontSize, 'THINOUTLINE')
 		c.Text:SetShadowColor(0, 0, 0, 0)
 
-		c.Icon = c:CreateTexture(nil, 'OVERLAY', nil, 1)
+		c.Icon = c:CreateTexture('$parentIcon', 'OVERLAY', nil, 1)
 		c.Icon:SetTexCoord(.1, .9, .1, .9)
 		c.Icon:SetPoint('BOTTOMRIGHT', c, 'BOTTOMLEFT', -7, 0)
 		c.Icon:SetPoint('TOPRIGHT', h, 'TOPLEFT', -7, 0)
 		CastingBarFrame_AddWidgetForFade(c, c.Icon)
 
-		c.IconBorder = c:CreateTexture(nil, 'OVERLAY', nil, 2)
+		c.IconBorder = c:CreateTexture('$parentIconBorder', 'OVERLAY', nil, 2)
 		c.IconBorder:SetTexture(config.IconTextures.Normal)
 		c.IconBorder:SetVertexColor(unpack(config.Colors.Border))
 		c.IconBorder:SetPoint('TOPRIGHT', c.Icon, 2, 2)
 		c.IconBorder:SetPoint('BOTTOMLEFT', c.Icon, -2, -2)
 		CastingBarFrame_AddWidgetForFade(c, c.IconBorder)
 
-		c.Spark = c:CreateTexture(nil, 'OVERLAY', nil, 2)
+		c.Spark = c:CreateTexture('$parentSpark', 'OVERLAY', nil, 2)
 		c.Spark:SetTexture[[Interface\CastingBar\UI-CastingBar-Spark]]
 		c.Spark:SetBlendMode'ADD'
 		c.Spark:SetSize(16,16)
 		c.Spark:SetPoint('CENTER', c, 0, 0)
 
-		c.Flash = c:CreateTexture(nil, 'OVERLAY', nil, 2)
+		c.Flash = c:CreateTexture('$parentFlash', 'OVERLAY', nil, 2)
 		c.Flash:SetTexture(config.StatusbarTexture)
 		c.Flash:SetBlendMode'ADD'
 
@@ -554,15 +657,18 @@ function UnitFrameMixin:Create(unitframe)
 	self.selectionHighlight:SetBlendMode('ADD')
 	self.selectionHighlight:SetVertexColor(.8, .8, 1, .7)
 	self.selectionHighlight:Hide()
+	self.selectionHighlight._SetVertexColor = self.selectionHighlight.SetVertexColor
+	self.selectionHighlight.SetVertexColor = nop
 
 	self.BuffFrame = CreateFrame('StatusBar', '$parentBuffFrame', self, 'HorizontalLayoutFrame')
 	Mixin(self.BuffFrame, NameplateBuffContainerMixin)
 	self.BuffFrame:SetPoint('LEFT', self.healthBar, -1, 0)
 	self.BuffFrame.spacing = 4
-	self.BuffFrame.fixedHeight = 14
+	self.BuffFrame.fixedHeight = 18
 	self.BuffFrame:SetScript('OnEvent', self.BuffFrame.OnEvent)
 	self.BuffFrame:SetScript('OnUpdate', self.BuffFrame.OnUpdate)
 	self.BuffFrame:OnLoad()
+	self.BuffFrame.UpdateBuffs = UpdateBuffs
 
 	-- Quest
 	self.questIcon = self:CreateTexture(nil, nil, nil, 0)
@@ -642,10 +748,8 @@ function UnitFrameMixin:UpdateUnitEvents()
 		displayedUnit = self.displayedUnit;
 	end
 	self:RegisterUnitEvent('UNIT_MAXHEALTH', unit, displayedUnit);
-	self:RegisterUnitEvent('UNIT_HEALTH', unit, displayedUnit);
-	self:RegisterUnitEvent('UNIT_HEALTH_FREQUENT', unit, displayedUnit);
+	self:RegisterUnitEvent('UNIT_HEALTH_FREQUENT', unit, displayedUnit); 
 
-	self:RegisterUnitEvent('UNIT_AURA', unit, displayedUnit);
 	self:RegisterUnitEvent('UNIT_THREAT_SITUATION_UPDATE', unit, displayedUnit);
 	self:RegisterUnitEvent('UNIT_THREAT_LIST_UPDATE', unit, displayedUnit);
 	self:RegisterUnitEvent('UNIT_HEAL_PREDICTION', unit, displayedUnit);
@@ -656,32 +760,32 @@ end
 
 function UnitFrameMixin:UnregisterEvents()
 	self:SetScript('OnEvent', nil)
+	self:UnregisterAllEvents()
 end
-
 
 function UnitFrameMixin:UpdateAllElements()
 	self:UpdateInVehicle()
 
 	if UnitExists(self.displayedUnit) then
+		self:UpdateRaidTarget()
 		CompactUnitFrame_UpdateSelectionHighlight(self)
 		CompactUnitFrame_UpdateMaxHealth(self) 
 		CompactUnitFrame_UpdateHealth(self)
 		CompactUnitFrame_UpdateHealPrediction(self)
 		CompactUnitFrame_UpdateClassificationIndicator(self)
-		self:UpdateRaidTarget()
 		CompactUnitFrame_UpdateHealthColor(self)
-		CompactUnitFrame_UpdateName(self);
+		self:UpdateName()
 		self:UpdateThreat()
-		self:OnUnitAuraUpdate()
 		self:UpdateQuestVisuals()
 	end
 end
 
 function UnitFrameMixin:OnEvent(event, ...)
 	local arg1, arg2, arg3, arg4 = ...
+
 	if ( event == 'PLAYER_TARGET_CHANGED' ) then
 		CompactUnitFrame_UpdateSelectionHighlight(self);
-		CompactUnitFrame_UpdateName(self);
+		self:UpdateName()
 	elseif ( arg1 == self.unit or arg1 == self.displayedUnit ) then
 		if ( event == 'UNIT_MAXHEALTH' ) then
 			CompactUnitFrame_UpdateMaxHealth(self)
@@ -691,17 +795,14 @@ function UnitFrameMixin:OnEvent(event, ...)
 			CompactUnitFrame_UpdateHealth(self)
 			CompactUnitFrame_UpdateHealPrediction(self)
 		elseif ( event == 'UNIT_NAME_UPDATE' ) then
-			CompactUnitFrame_UpdateName(self)
+			self:UpdateName()
 			CompactUnitFrame_UpdateHealthColor(self)
-		elseif ( event == 'UNIT_AURA' ) then
-			self:OnUnitAuraUpdate()
 		elseif ( event == 'UNIT_THREAT_SITUATION_UPDATE' ) then
 			self:UpdateThreat()
-			--CompactUnitFrame_UpdateHealthBorder(self)
 		elseif ( event == 'UNIT_THREAT_LIST_UPDATE' ) then
 			if ( self.optionTable.considerSelectionInCombatAsHostile ) then
 				CompactUnitFrame_UpdateHealthColor(self)
-				CompactUnitFrame_UpdateName(self)
+				self:UpdateName()
 			end
 			self:UpdateThreat()
 		elseif ( event == 'UNIT_HEAL_PREDICTION' or event == 'UNIT_ABSORB_AMOUNT_CHANGED' or event == 'UNIT_HEAL_ABSORB_AMOUNT_CHANGED' ) then
@@ -744,6 +845,34 @@ function UnitFrameMixin:UpdateRaidTarget()
 	end
 end
 
+function UnitFrameMixin:UpdateName()
+	if ( not ShouldShowName(self) ) then
+		self.name:Hide();
+	else
+		self.name:SetText(GetUnitName(self.unit, true));
+
+		local _, eClass = UnitClass(self.unit)
+		local cColor = UnitIsPlayer(self.unit) and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[eClass]
+
+		if ( self.optionTable.colorNameByClass and cColor) then
+			self.name:SetVertexColor(cColor.r, cColor.g, cColor.b)
+		elseif ( CompactUnitFrame_IsTapDenied(self) ) then
+			-- Use grey if not a player and can't get tap on unit
+			self.name:SetVertexColor(0.5, 0.5, 0.5);
+		elseif ( self.optionTable.colorNameBySelection ) then
+			if ( self.optionTable.considerSelectionInCombatAsHostile and CompactUnitFrame_IsOnThreatListWithPlayer(self.displayedUnit) ) then
+				self.name:SetVertexColor(1.0, 0.0, 0.0);
+			else
+				self.name:SetVertexColor(UnitSelectionColor(self.unit, self.optionTable.colorNameWithExtendedColors));
+			end
+		else
+			self.name:SetVertexColor(1, 1, 1)
+		end
+
+		self.name:Show();
+	end
+end
+
 function UnitFrameMixin:UpdateThreat()
 	local tex = self.aggroHighlight
 	if not self.optionTable.tankBorderColor then
@@ -769,7 +898,7 @@ end
 
 function UnitFrameMixin:UpdateQuestVisuals()
 	local isQuest, numLeft = ns.GetUnitQuestInfo(self.displayedUnit)
-	if (isQuest) then
+	if ( self.optionTable.displayQuest and isQuest ) then
 		if (numLeft > 0) then
 			self.questText:SetText(numLeft)
 		else
@@ -780,9 +909,5 @@ function UnitFrameMixin:UpdateQuestVisuals()
 		self.questText:SetText(nil)
 		self.questIcon:Hide()
 	end
-end
-
-function UnitFrameMixin:OnUnitAuraUpdate()
-	self.BuffFrame:UpdateBuffs(self.displayedUnit, self.optionTable.filter)
 end
 

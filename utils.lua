@@ -29,7 +29,9 @@ function ns.GetUnitQuestInfo(namePlateUnitToken)
 			local done, total = str:GetText():match('(%d+)/(%d+)')  -- kill objective
 			if (done and total) then
 				local left = total - done
-				if (left > num_left) then
+				if (left == 0) then
+					is_quest = false
+				elseif (left > num_left) then
 					num_left = left
 				end
 			end
